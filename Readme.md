@@ -195,6 +195,7 @@ Your support means a lot! Even a small contribution helps keep this project goin
 
 Thank you to all our sponsors! 感谢所有赞助者！
 
+![48baaf6ad900369fbd19b146a3d9f29d](https://github.com/user-attachments/assets/7d136d54-4327-4004-89b3-d4bc9ab7ad83)
 
 
 ---
