@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TalkTunnel</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #f5f5f5;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .app-bar {
+      background-color: #2196F3;
+      color: white;
+      padding: 16px 24px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+    }
+
+    .app-bar h1 {
+      font-size: 20px;
+      font-weight: 500;
+    }
+
+    .social-links {
+      display: flex;
+      gap: 16px;
+    }
+
+    .social-links a {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      background-color: rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      transition: background-color 0.3s, transform 0.2s;
+      text-decoration: none;
+    }
+
+    .social-links a:hover {
+      background-color: rgba(255, 255, 255, 0.2);
+      transform: scale(1.1);
+    }
+
+    .social-links svg {
+      width: 20px;
+      height: 20px;
+      fill: white;
+    }
+
+    .container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .qr-container {
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    #qrcode {
+      margin: 24px 0;
+    }
+
+    .info-section {
+      background: white;
+      border-radius: 8px;
+      padding: 24px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      font-size: 16px;
+    }
+
+    .info-label {
+      color: #666;
+    }
+
+    .info-value {
+      font-weight: 500;
+      color: #333;
+      font-family: 'Courier New', monospace;
+    }
+
+    .status {
+      margin-top: 24px;
+      padding: 16px;
+      background-color: #e3f2fd;
+      border-radius: 8px;
+      text-align: center;
+      color: #1976d2;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-radius: 50%;
+      border-top-color: #2196F3;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .file-upload-section {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+      width: 90%;
+      max-width: 400px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .file-button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      font-size: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    .file-button:hover {
+      background-color: #45a049;
+    }
+  </style>
+  <script>
+    // PC端i18n配置
+    const pcTranslations = {
+      zh: {
+        desktopApp: "TalkTunnel",
+        scanToConnect: "扫码连接",
+        scanQRCode: "使用手机扫描此二维码",
+        ipAddress: "IP地址:",
+        port: "端口:",
+        connectedClients: "已连接客户端:",
+        sendFilesToPhones: "发送文件到所有手机",
+        selectFileToSend: "选择文件发送到手机",
+        fileSending: "正在发送: {0}...",
+        fileSentToDevices: "文件已发送到 {0} 个设备",
+        sendFailed: "发送失败: {0}",
+        sendFailedRetry: "发送失败，请重试",
+        waitingForText: "等待手机发送文本...",
+        minimizeToTray: "最小化到托盘",
+        sponsorGitHub: "GitHub",
+        sponsorTwitter: "Twitter/X",
+        sponsorAfdian: "爱发电"
+      },
+      en: {
+        desktopApp: "TalkTunnel",
+        scanToConnect: "Scan to Connect",
+        scanQRCode: "Scan this QR code with your mobile device",
+        ipAddress: "IP Address:",
+        port: "Port:",
+        connectedClients: "Connected Clients:",
+        sendFilesToPhones: "Send files to all phones",
+        selectFileToSend: "Select file to send to phones",
+        fileSending: "Sending: {0}...",
+        fileSentToDevices: "File sent to {0} devices",
+        sendFailed: "Send failed: {0}",
+        sendFailedRetry: "Send failed, please retry",
+        waitingForText: "Waiting for text from mobile...",
+        minimizeToTray: "Minimize to Tray",
+        sponsorGitHub: "GitHub",
+        sponsorTwitter: "Twitter/X",
+        sponsorAfdian: "Afdian"
+      }
+    };
+
+    function getBrowserLanguage() {
+      const lang = navigator.language || navigator.userLanguage;
+      return lang.startsWith('zh') ? 'zh' : 'en';
+    }
+
+    function tpc(key, ...args) {
+      const lang = getBrowserLanguage();
+      const text = pcTranslations[lang][key] || pcTranslations['en'][key] || key;
+      return text.replace(/{(\d+)}/g, (match, index) => {
+        return typeof args[index] !== 'undefined' ? args[index] : match;
+      });
+    }
+
+    // 初始化页面
+    window.addEventListener('DOMContentLoaded', () => {
+      // 设置所有文本
+      document.querySelector('.app-bar h1').textContent = tpc('desktopApp');
+      document.querySelector('.qr-container h2').textContent = tpc('scanToConnect');
+      document.querySelector('.qr-container p').textContent = tpc('scanQRCode');
+      document.querySelectorAll('.info-label')[0].textContent = tpc('ipAddress');
+      document.querySelectorAll('.info-label')[1].textContent = tpc('port');
+      document.querySelectorAll('.info-label')[2].textContent = tpc('connectedClients');
+      document.querySelector('.file-upload-section h3').textContent = tpc('sendFilesToPhones');
+      document.querySelector('.file-button').textContent = tpc('selectFileToSend');
+      document.querySelector('.status').innerHTML = '<span class="loading"></span>' + tpc('waitingForText');
+      
+      // 设置社交链接的title属性
+      const socialLinks = document.querySelectorAll('.social-links a');
+      socialLinks[0].title = tpc('sponsorGitHub');
+      socialLinks[1].title = tpc('sponsorTwitter');
+      socialLinks[2].title = tpc('sponsorAfdian');
+    });
+  </script>
+</head>
+<body>
+  <div class="app-bar">
+    <h1>TalkTunnel</h1>
+    <div class="social-links">
+      <!-- GitHub 链接 -->
+      <a href="https://github.com/nexusonelw/talktunnel" target="_blank">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
+        </svg>
+      </a>
+      <!-- Twitter/X 链接 -->
+      <a href="https://x.com/nexusonelw" target="_blank">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+        </svg>
+      </a>
+      <!-- 赞助链接 -->
+      <a href="https://afdian.com/a/talkTunnel" target="_blank">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+        </svg>
+      </a>
+    </div>
+  </div>
+  
+  <div class="container">
+    <div class="qr-container">
+      <h2>Scan to Connect</h2>
+      <div id="qrcode"></div>
+      <p>Scan this QR code with your mobile device</p>
+    </div>
+
+    <div class="info-section">
+      <div class="info-row">
+        <span class="info-label">IP Address:</span>
+        <span class="info-value" id="ipAddress">Loading...</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Port:</span>
+        <span class="info-value" id="port">Loading...</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Connected Clients:</span>
+        <span class="info-value" id="connectedClients">0</span>
+      </div>
+    </div>
+
+    <div class="file-upload-section">
+      <h3>发送文件到所有设备</h3>
+      <input type="file" id="pcFileInput" style="display: none;" />
+      <button class="file-button" onclick="document.getElementById('pcFileInput').click()">
+        选择文件发送到手机
+      </button>
+      <div id="pcFileInfo" style="margin-top: 10px; color: #666; font-size: 14px;"></div>
+    </div>
+
+    <div class="status">
+      <span class="loading"></span>
+      Waiting for text from mobile...
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#2196F3">
+  <title>TalkTunnel Mobile</title>
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #f5f5f5;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .app-bar {
+      background-color: #2196F3;
+      color: white;
+      padding: 16px 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .app-bar h1 {
+      font-size: 20px;
+      font-weight: 500;
+    }
+
+    .container {
+      flex: 1;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+    }
+
+    .input-field {
+      width: 100%;
+      padding: 16px;
+      font-size: 16px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: white;
+      transition: border-color 0.3s;
+    }
+
+    .input-field:focus {
+      outline: none;
+      border-color: #2196F3;
+    }
+
+    .textarea-field {
+      min-height: 200px;
+      resize: vertical;
+      font-family: inherit;
+    }
+
+    .button {
+      background-color: #2196F3;
+      color: white;
+      border: none;
+      padding: 14px 24px;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.3s, transform 0.1s;
+      width: 100%;
+      text-transform: uppercase;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+
+    .button:hover {
+      background-color: #1976D2;
+    }
+
+    .button:active {
+      transform: scale(0.98);
+    }
+
+    .button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+
+    .status-message {
+      padding: 12px 16px;
+      border-radius: 8px;
+      text-align: center;
+      margin-bottom: 16px;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .success {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    .error {
+      background-color: #f44336;
+      color: white;
+    }
+
+    .connected {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+      border: 1px solid #4caf50;
+    }
+
+    .hint {
+      color: #666;
+      font-size: 14px;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+      z-index: 1000;
+      animation: fadeIn 0.3s;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .modal-content {
+      background: white;
+      margin: 20% auto;
+      padding: 24px;
+      width: 90%;
+      max-width: 400px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      animation: slideUp 0.3s ease-out;
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translateY(50px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .modal-header {
+      font-size: 20px;
+      font-weight: 500;
+      margin-bottom: 16px;
+    }
+
+    .modal-body {
+      color: #666;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    .modal-footer {
+      text-align: right;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-radius: 50%;
+      border-top-color: #2196F3;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .settings-section {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .settings-label {
+      font-size: 14px;
+      color: #666;
+      flex: 1;
+    }
+
+    .delay-input {
+      width: 80px;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .delay-unit {
+      font-size: 14px;
+      color: #666;
+      margin-left: 4px;
+    }
+
+    .manual-checkbox-row {
+      display: flex;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    .manual-checkbox {
+      width: 20px;
+      height: 20px;
+      margin-right: 8px;
+      cursor: pointer;
+    }
+
+    .manual-label {
+      font-size: 14px;
+      color: #666;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .file-section {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .file-input-wrapper {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+      width: 100%;
+    }
+
+    .file-input-wrapper input[type=file] {
+      position: absolute;
+      left: -9999px;
+    }
+
+    .file-label {
+      background-color: #2196F3;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: block;
+      text-align: center;
+      font-size: 16px;
+      transition: background-color 0.3s;
+    }
+
+    .file-label:hover {
+      background-color: #1976D2;
+    }
+
+    .file-info {
+      margin-top: 10px;
+      color: #666;
+      font-size: 14px;
+    }
+
+    .download-area {
+      background: #e3f2fd;
+      border: 2px dashed #2196F3;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+      text-align: center;
+      min-height: 100px;
+    }
+
+    .selected-files-list {
+      margin-top: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .file-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px;
+      margin: 5px 0;
+      background: #f5f5f5;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .file-item button {
+      background: #f44336;
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .file-item button:hover {
+      background: #d32f2f;
+    }
+
+    /* 防止输入框在发送时闪烁 */
+    #textInput {
+      -webkit-user-modify: read-write-plaintext-only;
+    }
+
+    /* 清空按钮样式 */
+    .clear-button {
+      background-color: #f44336 !important;
+      margin-top: 10px;
+    }
+
+    /* 确保输入框在手机上不会被键盘遮挡 */
+    @media (max-width: 768px) {
+      .container {
+        padding-bottom: 50vh; /* 为键盘留出空间 */
+      }
+    }
+  </style>
+  <script src="i18n.js"></script>
+</head>
+<body>
+  <div class="app-bar">
+    <h1 class="i18n" data-key="appTitle">Mobile App</h1>
+  </div>
+
+  <div class="container">
+    <div id="statusMessage"></div>
+    
+    <div class="settings-section">
+      <div class="settings-row">
+        <label class="settings-label i18n" for="a" data-key="autoSendDelay">自动发送延迟时间:</label>
+        <input 
+          type="number" 
+          id="a" 
+          class="delay-input" 
+          min="0" 
+          max="10" 
+          step="0.5" 
+          value="2"
+        >
+        <span class="delay-unit i18n" data-key="seconds">秒</span>
+      </div>
+      <div class="manual-checkbox-row">
+        <input type="checkbox" id="manualCheckbox" class="manual-checkbox" checked>
+        <label for="manualCheckbox" class="manual-label i18n" data-key="manualOperation">手动操作</label>
+      </div>
+    </div>
+    <p class="hint i18n" style="margin-top: 8px; margin-bottom: 16px;" data-key="delayHint">
+      设置为0秒将立即发送，最大延迟10秒
+    </p>
+    
+    <textarea 
+      id="textInput" 
+      class="input-field textarea-field i18n-placeholder" 
+      data-key="enterTextPlaceholder"
+      placeholder="Enter text here..."
+      autocomplete="off"
+      autocorrect="on"
+      autocapitalize="sentences"
+      spellcheck="true"
+      inputmode="text"
+    ></textarea>
+    
+    <button id="sendButton" class="button i18n" onclick="sendText()" data-key="sendText">
+      Send Text
+    </button>
+    
+    <button id="sendAndEnterButton" class="button i18n" data-key="sendAndClearWithEnter" style="display: none; margin-top: 10px;">
+      发送清空并回车
+    </button>
+    
+    <div class="file-section">
+      <div class="file-input-wrapper">
+        <label for="fileInput" class="file-label i18n" data-key="selectFiles">
+          选择文件或图片发送到PC
+        </label>
+        <input type="file" id="fileInput" accept="*/*" multiple />
+      </div>
+      <div id="fileInfo" class="file-info"></div>
+      <!-- 新增：文件列表显示区域 -->
+      <div id="selectedFilesList" class="selected-files-list"></div>
+      <!-- 新增：发送按钮（初始隐藏） -->
+      <button id="sendFilesButton" class="button i18n" style="display: none; margin-top: 10px;" data-key="sendSelectedFiles">发送选中的文件</button>
+    </div>
+
+    <div class="download-area" id="downloadArea">
+      <p class="i18n" data-key="receivedFilesHint">接收的文件将显示在这里</p>
+    </div>
+    
+    <p class="hint i18n" data-key="autopasteHint">Text will be automatically pasted on your desktop</p>
+  </div>
+
+  <div id="errorModal" class="modal">
+    <div class="modal-content">
+      <h2 class="modal-header" id="modalTitle">Error</h2>
+      <p class="modal-body" id="modalMessage">Something went wrong</p>
+      <div class="modal-footer">
+        <button class="button i18n" onclick="closeModal()" data-key="ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let isConnected = false;
+    let debounceTimer = null;
+    let heartbeatInterval = null;
+    const serverUrl = window.location.origin;
+
+    // 文本去重相关变量
+    let lastSentText = ''; // 缓存最后发送的文本
+    let textHistory = []; // 保存最近发送的文本历史
+    const MAX_HISTORY_SIZE = 5; // 最多保存5条历史记录
+    
+    // 新增变量
+    let lastSentLength = 0; // 记录上次发送的文本长度
+    let isSending = false; // 标记是否正在发送，避免重复发送
+    let manualMode = true; // 默认启用手动模式
+
+    // 添加文本去重函数
+    function removeDuplicateText(currentText) {
+      // 如果当前文本为空，直接返回
+      if (!currentText || !currentText.trim()) {
+        return currentText;
+      }
+      
+      // 只返回新增的部分，不再进行复杂的重复检测
+      return currentText;
+    }
+
+    // 添加更新历史记录的函数
+    function updateTextHistory(text) {
+      if (!text || !text.trim()) return;
+      
+      lastSentText = text.trim();
+      textHistory.push(text.trim());
+      
+      // 保持历史记录在限制范围内
+      if (textHistory.length > MAX_HISTORY_SIZE) {
+        textHistory.shift();
+      }
+    }
+
+    // 调试日志函数（已禁用）
+    function debugLog(message) {
+      // 调试功能已移除
+    }
+
+    // Check connection on load
+    checkConnection();
+
+    async function checkConnection() {
+      try {
+        const response = await fetch(serverUrl);
+        if (response.ok) {
+          isConnected = true;
+          
+          // 注册连接
+          await fetch(serverUrl + '/connect', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          // 获取PC端保存的延迟时间
+          try {
+            const delayResponse = await fetch(serverUrl + '/get-delay');
+            if (delayResponse.ok) {
+              const data = await delayResponse.json();
+              document.getElementById('a').value = data.delay;
+            }
+          } catch (error) {
+            console.error('Failed to get delay settings:', error);
+          }
+          
+          // 启动心跳
+          startHeartbeat();
+          
+          // 启动WebSocket连接
+          connectWebSocket();
+          
+          showStatus(t('connectedToDesktop'), 'connected');
+        } else {
+          showError(t('connectionError'), t('failedToConnect'));
+        }
+      } catch (error) {
+        showError(t('connectionError'), t('cannotReachDesktop'));
+      }
+    }
+
+    function showStatus(message, type) {
+      const statusEl = document.getElementById('statusMessage');
+      statusEl.textContent = message;
+      statusEl.className = `status-message ${type}`;
+      
+      if (type !== 'connected') {
+        setTimeout(() => {
+          statusEl.style.display = 'none';
+        }, 3000);
+      }
+    }
+
+    function showError(title, message) {
+      document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalMessage').textContent = message;
+      document.getElementById('errorModal').style.display = 'block';
+    }
+
+    function closeModal() {
+      document.getElementById('errorModal').style.display = 'none';
+    }
+
+    async function sendText() {
+      if (isSending) return; // 防止重复发送
+      
+      const textInput = document.getElementById('textInput');
+      const fullText = textInput.value;
+      
+      // 如果是手动模式，直接发送全部内容并清空
+      if (manualMode) {
+        const trimmedText = fullText.trim();
+        if (!trimmedText) return;
+        
+        const sendButton = document.getElementById('sendButton');
+        sendButton.disabled = true;
+        sendButton.innerHTML = '<span class="loading"></span>' + t('sending');
+        isSending = true;
+        
+        try {
+          const response = await fetch(serverUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: trimmedText + ' '
+          });
+          
+          if (response.ok) {
+            textInput.value = ''; // 清空输入框
+            lastSentLength = 0;
+            updateTextHistory(trimmedText);
+            const delay = getDelayTime() / 1000;
+            showStatus(t('textSentWithDelay', delay), 'success');
+          } else {
+            showError('error', t('connectionError'));
+          }
+        } catch (error) {
+          showError('error', t('cannotReachDesktop'));
+        } finally {
+          sendButton.disabled = false;
+          sendButton.textContent = t('sendAndClear');
+          isSending = false;
+        }
+        return;
+      }
+      
+      // 原有的自动模式逻辑保持不变...
+      // 计算新增的文本
+      let newText;
+      if (fullText.length > lastSentLength) {
+          newText = fullText.substring(lastSentLength);
+      } else {
+          // 如果文本长度变短了，可能是删除操作，设置为0
+          lastSentLength = 0;
+          newText = fullText;
+      }
+      
+      // 去除新增文本的首尾空格
+      newText = newText.trim();
+      if (!newText) return; // 没有新文本，不发送
+      
+      const sendButton = document.getElementById('sendButton');
+      sendButton.disabled = true;
+      sendButton.innerHTML = '<span class="loading"></span>' + t('sending');
+      isSending = true;
+      
+      try {
+          // 记录发送前的文本内容和光标位置
+          const textBeforeSend = textInput.value;
+          const cursorPos = textInput.selectionEnd;
+          
+          const response = await fetch(serverUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain' },
+              body: newText + ' ' // Add space like in Flutter version
+          });
+          
+          if (response.ok) {
+              // 更新已发送的长度
+              lastSentLength = fullText.length;
+              // 更新历史并记录新发送的部分
+              updateTextHistory(newText);
+              const delayTime = getDelayTime() / 1000;
+              showStatus(t('textSentWithDelay', delayTime), 'success');
+              
+              // 检查文本是否在发送过程中发生了变化
+              const currentText = textInput.value;
+              textInput.focus();
+              
+              if (currentText === textBeforeSend) {
+                  // 文本没有变化，恢复原光标位置
+                  textInput.setSelectionRange(cursorPos, cursorPos);
+              } else {
+                  // 文本发生了变化，将光标定位到文本末尾
+                  textInput.setSelectionRange(currentText.length, currentText.length);
+              }
+          } else {
+              showError(t('error'), t('failedToConnect'));
+          }
+      } catch (error) {
+          showError(t('error'), t('cannotReachDesktop'));
+      } finally {
+          sendButton.disabled = false;
+          sendButton.textContent = t('sendText');
+          isSending = false;
+      }
+    }
+
+    // 发送文本并清空输入框，然后发送回车
+    async function sendTextAndEnter() {
+      if (isSending) return;
+      
+      const textInput = document.getElementById('textInput');
+      const fullText = textInput.value;
+      
+      // 如果是手动模式，直接发送全部内容
+      if (manualMode) {
+        const trimmedText = fullText.trim();
+        if (!trimmedText) return;
+        
+        const sendAndEnterButton = document.getElementById('sendAndEnterButton');
+        sendAndEnterButton.disabled = true;
+        sendAndEnterButton.innerHTML = '<span class="loading"></span>' + t('sending');
+        isSending = true;
+        
+        try {
+          // 发送文本
+          const textResponse = await fetch(serverUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: trimmedText + ' '
+          });
+          
+          if (textResponse.ok) {
+            // 发送回车键
+            const enterResponse = await fetch(serverUrl + '/enter-key', {
+              method: 'POST'
+            });
+            
+            if (enterResponse.ok) {
+              // 清空输入框
+              textInput.value = '';
+              lastSentLength = 0;
+              updateTextHistory(trimmedText);
+              const delay = getDelayTime() / 1000;
+              showStatus(t('textSentWithDelay', delay), 'success');
+            } else {
+              showError('error', t('connectionError'));
+            }
+          } else {
+            showError('error', t('connectionError'));
+          }
+        } catch (error) {
+          showError('error', t('cannotReachDesktop'));
+        } finally {
+          sendAndEnterButton.disabled = false;
+          sendAndEnterButton.textContent = t('sendAndClearWithEnter');
+          isSending = false;
+        }
+      }
+    }
+
+    // Get delay value from settings
+    function getDelayTime() {
+      const delayInput = document.getElementById('a');
+      const delay = parseFloat(delayInput.value) || 2; // 默认2秒
+      return delay * 1000; // 转换为毫秒
+    }
+
+    // Save delay setting and sync with PC
+    document.getElementById('a').addEventListener('change', async function() {
+        const delay = this.value;
+        
+        // 保存到本地存储
+        if (window.localStorage) {
+            window.localStorage.setItem('userDelayTime', delay);
+        }
+        
+        // 同步到PC端
+        if (isConnected) {
+            try {
+                const response = await fetch(serverUrl + '/save-delay', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ delay: parseFloat(delay) })
+                });
+                
+                if (response.ok) {
+                    console.log('Delay time synced with PC');
+                }
+            } catch (error) {
+                console.error('Failed to sync delay time:', error);
+            }
+        }
+    });
+
+    // Load saved delay on page load
+    window.addEventListener('load', async function() {
+        // 先尝试从PC端获取设置
+        if (isConnected) {
+            try {
+                const response = await fetch(serverUrl + '/get-delay');
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('a').value = data.delay;
+                    return;
+                }
+            } catch (error) {
+                console.error('Failed to get delay from PC:', error);
+            }
+        }
+        
+        // 如果无法从PC端获取，则使用本地存储
+        if (window.localStorage) {
+            const savedDelay = window.localStorage.getItem('userDelayTime');
+            if (savedDelay) {
+                document.getElementById('a').value = savedDelay;
+            }
+        }
+    });
+
+    // Auto-send after user-defined seconds of no typing
+    document.getElementById('textInput').addEventListener('input', function() {
+      // 如果是手动模式，不启用自动发送
+      if (manualMode) return;
+      
+      clearTimeout(debounceTimer);
+      
+      const currentText = this.value;
+      const hasNewContent = currentText.length > lastSentLength;
+      
+      if (hasNewContent) {
+        const delayTime = getDelayTime();
+        debounceTimer = setTimeout(() => {
+            // 记录发送前的文本内容和光标位置
+            const textBeforeSend = this.value;
+            const cursorPosition = this.selectionEnd;
+            
+            sendText().then(() => {
+                // 检查文本是否在发送过程中发生了变化
+                const currentText = this.value;
+                this.focus();
+                
+                if (currentText === textBeforeSend) {
+                    // 文本没有变化，恢复原光标位置
+                    this.setSelectionRange(cursorPosition, cursorPosition);
+                } else {
+                    // 文本发生了变化，将光标定位到文本末尾
+                    this.setSelectionRange(currentText.length, currentText.length);
+                }
+            });
+        }, delayTime);
+      }
+    });
+
+    // Handle Enter key 
+    document.getElementById('textInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        clearTimeout(debounceTimer);
+        
+        // 在新行前添加换行符，但保持输入框内容
+        const cursorPos = this.selectionStart;
+        const textBefore = this.value.substring(0, cursorPos);
+        const textAfter = this.value.substring(cursorPos);
+        
+        this.value = textBefore + '\n' + textAfter;
+        this.setSelectionRange(cursorPos + 1, cursorPos + 1);
+        
+        // 发送文本但不清空
+        sendText();
+      }
+    });
+
+    // Register service worker for PWA
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(reg => console.log('Service Worker registered'))
+        .catch(err => console.log('Service Worker registration failed'));
+    }
+
+    // 心跳函数
+    function startHeartbeat() {
+      // 清除已存在的心跳
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+      }
+      
+      // 每20秒发送一次心跳
+      heartbeatInterval = setInterval(async () => {
+        try {
+          await fetch(serverUrl + '/heartbeat', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+        } catch (error) {
+          console.error('Heartbeat failed:', error);
+          // 如果心跳失败，尝试重新连接
+          checkConnection();
+        }
+      }, 20000);
+    }
+
+    // 页面卸载时断开连接
+    window.addEventListener('beforeunload', async () => {
+      // 清除文本历史记录
+      lastSentText = '';
+      textHistory = [];
+      lastSentLength = 0;
+      isSending = false;
+      
+      if (isConnected) {
+        try {
+          await fetch(serverUrl + '/disconnect', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+        } catch (error) {
+          console.error('Failed to disconnect:', error);
+        }
+      }
+      
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+      }
+    });
+
+    // 页面隐藏/显示时处理连接
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        // 页面隐藏时停止心跳
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+        }
+      } else {
+        // 页面显示时重新检查连接
+        if (isConnected) {
+          startHeartbeat();
+        }
+      }
+    });
+
+    // WebSocket连接
+    let ws = null;
+
+    function connectWebSocket() {
+      const wsUrl = serverUrl.replace('http://', 'ws://');
+      ws = new WebSocket(wsUrl);
+      
+      ws.onopen = function() {
+        console.log('WebSocket connected');
+      };
+      
+      ws.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        if (data.type === 'file') {
+          handleReceivedFile(data);
+        }
+      };
+      
+      ws.onerror = function(error) {
+        console.error('WebSocket error:', error);
+      };
+      
+      ws.onclose = function() {
+        console.log('WebSocket disconnected');
+        // 尝试重连
+        setTimeout(connectWebSocket, 5000);
+      };
+    }
+
+    // 处理接收到的文件
+    function handleReceivedFile(data) {
+      const { filename, mimetype, content } = data;
+      
+      // 将base64转换为blob
+      const byteCharacters = atob(content);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: mimetype });
+      
+      // 创建下载链接
+      const url = URL.createObjectURL(blob);
+      const downloadArea = document.getElementById('downloadArea');
+      
+      const fileElement = document.createElement('div');
+      fileElement.style.marginTop = '10px';
+      fileElement.innerHTML = `
+        <a href="${url}" download="${filename}" style="
+          display: inline-block;
+          padding: 8px 16px;
+          background: #4CAF50;
+          color: white;
+          border-radius: 4px;
+          text-decoration: none;
+        ">${t('download')}: ${filename}</a>
+      `;
+      
+      downloadArea.appendChild(fileElement);
+      
+      // 自动下载到下载文件夹
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+    }
+
+    // 存储选中的文件
+    let selectedFiles = [];
+
+    // 文件选择处理
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      const files = Array.from(e.target.files);
+      if (files.length === 0) return;
+      
+      // 添加到已选文件列表
+      selectedFiles = selectedFiles.concat(files);
+      
+      // 更新UI
+      updateFilesList();
+      
+      // 清空input以允许重复选择相同文件
+      e.target.value = '';
+    });
+
+    // 更新文件列表显示
+    function updateFilesList() {
+      const listEl = document.getElementById('selectedFilesList');
+      const sendButton = document.getElementById('sendFilesButton');
+      const fileInfo = document.getElementById('fileInfo');
+      
+      if (selectedFiles.length === 0) {
+        listEl.innerHTML = '';
+        sendButton.style.display = 'none';
+        fileInfo.textContent = '';
+        return;
+      }
+      
+      // 显示文件数量和总大小
+      const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+      fileInfo.textContent = t('filesSelected') + ` ${selectedFiles.length} ` + t('files') + `，` + t('totalSize') + `: ${(totalSize / 1024 / 1024).toFixed(2)} MB`;
+      
+      // 显示文件列表
+      listEl.innerHTML = selectedFiles.map((file, index) => `
+        <div class="file-item">
+          <span>${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+          <button onclick="removeFile(${index})">${t('remove')}</button>
+        </div>
+      `).join('');
+      
+      // 显示发送按钮
+      sendButton.style.display = 'block';
+    }
+
+    // 移除文件
+    function removeFile(index) {
+      selectedFiles.splice(index, 1);
+      updateFilesList();
+    }
+
+    // 发送文件
+    document.getElementById('sendFilesButton').addEventListener('click', async function() {
+      if (selectedFiles.length === 0) return;
+      
+      const button = this;
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.innerHTML = '<span class="loading"></span>' + t('sendingProgress');
+      
+      let successCount = 0;
+      let failCount = 0;
+      
+      // 逐个发送文件
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        
+        // 更新进度
+        button.innerHTML = `<span class="loading"></span>` + t('sendingProgress') + ` (${i + 1}/${selectedFiles.length})`;
+        
+        // 尝试发送文件，最多重试3次
+        let retryCount = 0;
+        let success = false;
+        
+        while (retryCount < 3 && !success) {
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // 使用AbortController来控制超时
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
+            
+            const response = await fetch(`${serverUrl}/upload-to-pc`, {
+              method: 'POST',
+              body: formData,
+              signal: controller.signal,
+              // 不要手动设置Content-Type，让浏览器自动设置
+              headers: {
+                // 'Content-Type': 'multipart/form-data' // 删除这行
+              }
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+              successCount++;
+              success = true;
+              showStatus(t('fileSentSuccess', file.name), 'success');
+            } else {
+              const error = await response.json();
+              throw new Error(error.error || '发送失败');
+            }
+          } catch (error) {
+            retryCount++;
+            console.error(`Error sending file (attempt ${retryCount}/3):`, error);
+            
+            if (retryCount >= 3) {
+              failCount++;
+              if (error.name === 'AbortError') {
+                showError(t('sendTimeout'), t('fileTimeout', file.name));
+              } else {
+                showError(t('sendFailed'), t('fileFailed', file.name, error.message));
+              }
+            } else {
+              // 重试前等待一秒
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
+        }
+      }
+      
+      // 发送完成
+      button.disabled = false;
+      button.textContent = originalText;
+      
+      if (successCount > 0) {
+        showStatus(t('filesSentSuccess', successCount), 'success');
+      }
+      
+      if (failCount > 0) {
+        showError(t('sendFailed'), t('filesPartiallyFailed', failCount));
+      }
+      
+      // 清空已选文件
+      selectedFiles = [];
+      updateFilesList();
+    });
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+      const modal = document.getElementById('errorModal');
+      if (event.target === modal) {
+        modal.style.display = 'none';
+      }
+    }
+
+    // 页面获得焦点时，恢复输入框焦点
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        const textInput = document.getElementById('textInput');
+        if (textInput) {
+          // 延迟一下再聚焦，确保页面完全激活
+          setTimeout(() => {
+            textInput.focus();
+            // 将光标移到末尾
+            textInput.setSelectionRange(textInput.value.length, textInput.value.length);
+          }, 100);
+        }
+      }
+    });
+
+    // 处理手动模式切换
+    function handleManualModeChange() {
+      const manualCheckbox = document.getElementById('manualCheckbox');
+      const delayRow = document.querySelector('.settings-row');
+      const delayHint = document.querySelector('.hint');
+      const sendButton = document.getElementById('sendButton');
+      const sendAndEnterButton = document.getElementById('sendAndEnterButton');
+      
+      manualMode = manualCheckbox.checked;
+      
+      if (manualMode) {
+        // 手动模式
+        delayRow.style.display = 'none';
+        if (delayHint) delayHint.style.display = 'none';
+        sendButton.textContent = t('sendAndClear');
+        sendAndEnterButton.style.display = 'block';
+        
+        // 清除自动发送定时器
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+      } else {
+        // 自动模式
+        delayRow.style.display = 'flex';
+        if (delayHint) delayHint.style.display = 'block';
+        sendButton.textContent = t('sendText');
+        sendAndEnterButton.style.display = 'none';
+      }
+    }
+
+    // 添加复选框事件监听器
+    document.getElementById('manualCheckbox').addEventListener('change', handleManualModeChange);
+
+    // 添加一个清空按钮来手动清空输入框
+    function addClearButton() {
+      const container = document.querySelector('.container');
+      const textInput = document.getElementById('textInput');
+      
+      const clearBtn = document.createElement('button');
+      clearBtn.textContent = '清空输入框';
+      clearBtn.className = 'button clear-button';
+      clearBtn.style.backgroundColor = '#f44336';
+      clearBtn.style.marginTop = '10px';
+      
+      clearBtn.onclick = function() {
+        textInput.value = '';
+        lastSentLength = 0;
+        lastSentText = '';
+        textHistory = [];
+        textInput.focus();
+      };
+      
+      // 在发送按钮后添加
+      const sendButton = document.getElementById('sendAndEnterButton');
+      sendButton.parentNode.insertBefore(clearBtn, sendButton.nextSibling);
+    }
+
+    // 页面加载完成后添加清空按钮
+    window.addEventListener('load', function() {
+      setTimeout(addClearButton, 100);
+      // 初始化手动模式状态
+      handleManualModeChange();
+      // 绑定新按钮事件
+      document.getElementById('sendAndEnterButton').addEventListener('click', sendTextAndEnter);
+    });
+  </script>
+</body>
+</html>

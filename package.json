@@ -1,0 +1,152 @@
+{
+  "name": "talktunnel",
+  "version": "1.0.0",
+  "description": "Cross-device text tunnel tool",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "start-win-admin": "start-windows-admin.bat",
+    "generate-icons": "node generate-icons.js",
+    "build": "npm run generate-icons && electron-builder",
+    "dist": "npm run generate-icons && electron-builder --publish=never",
+    "pack": "npm run generate-icons && electron-builder --dir",
+    "dist-mac": "npm run generate-icons && electron-builder --mac",
+    "dist-mac-arm64": "npm run generate-icons && electron-builder --mac --arm64",
+    "dist-mac-x64": "npm run generate-icons && electron-builder --mac --x64",
+    "dist-win": "npm run generate-icons && electron-builder --win",
+    "dist-win-arm64": "npm run generate-icons && electron-builder --win --arm64",
+    "dist-win-x64": "npm run generate-icons && electron-builder --win --x64",
+    "build-installers": "node build-installers.js",
+    "dist-all-installers": "node build-all.js",
+    "postinstall": "electron-builder install-app-deps",
+    "rebuild": "electron-rebuild -f -w @nut-tree-fork/nut-js"
+  },
+  "keywords": [],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "electron-icon-maker": "^0.0.5",
+    "electron-rebuild": "^3.2.9"
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "electron-store": "^8.1.0",
+    "express": "^4.18.2",
+    "multer": "^2.0.1",
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.2"
+  },
+  "build": {
+    "appId": "com.example.talktunnel",
+    "productName": "TalkTunnel",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!**/*.ts",
+      "!*.code-workspace",
+      "!LICENSE.md",
+      "!package-lock.json",
+      "!yarn.lock",
+      "!dist",
+      "!node_modules/.cache",
+      "!.git",
+      "!.github",
+      "!.vscode",
+      "!uploads/**",
+      "build/icons/**/*",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icons",
+        "to": "icons",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "build/icons/mac/icon.icns",
+      "extendInfo": {
+        "CFBundleIconFile": "icon",
+        "LSUIElement": false
+      },
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "TalkTunnel",
+      "icon": "build/icons/icon.icns",
+      "iconSize": 80,
+      "backgroundColor": "#ffffff",
+      "contents": [
+        {
+          "x": 448,
+          "y": 344,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 192,
+          "y": 344,
+          "type": "file"
+        }
+      ],
+      "window": {
+        "width": 640,
+        "height": 480
+      }
+    },
+    "win": {
+      "icon": "build/icons/win/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": true,
+      "installerIcon": "build/icons/win/icon.ico",
+      "uninstallerIcon": "build/icons/win/icon.ico",
+      "installerHeaderIcon": "build/icons/win/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TalkTunnel"
+    },
+    "linux": {
+      "icon": "build/icons",
+      "category": "Utility",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
+  }
+}
