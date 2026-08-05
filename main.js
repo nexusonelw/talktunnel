@@ -6,7 +6,9 @@ const fs = require('fs');
 global.electronApp = app;
 
 // 然后再加载 server
-const { startServer, getServerInfo } = require('./server');
+const { startServer, getServerInfo, getLocalIPs, setCloudRegistrationError } = require('./server');
+const cloudSync = require('./cloudSyncService');
+const { initPinyinInput } = require('./pinyin/pinyinInput');
 
 // 获取系统语言
 function getSystemLanguage() {
@@ -49,6 +51,42 @@ function t(key) {
 let mainWindow;
 let tray = null;  // 托盘实例
 let isQuiting = false;  // 退出标志
+
+async function promptForCloudPassword() {
+  if (!mainWindow) return null;
+  console.log('[cloud-register] waiting for desktop window before password prompt');
+  return mainWindow.webContents.executeJavaScript(`
+    new Promise((resolve) => {
+      const existing = document.getElementById('cloudPasswordOverlay');
+      if (existing) existing.remove();
+
+      const overlay = document.createElement('div');
+      overlay.id = 'cloudPasswordOverlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;';
+      overlay.innerHTML = '<div style="width:90%;max-width:380px;background:#fff;border-radius:8px;padding:22px;box-shadow:0 8px 30px rgba(0,0,0,.25)"><h2 style="margin:0 0 12px;font-size:18px;color:#222">初始化设备密码</h2><p style="margin:0 0 14px;color:#666;font-size:14px;line-height:1.5">该密码会绑定当前设备，手机扫码后需要输入同一个密码。</p><input id="cloudPasswordInput" type="password" autofocus style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:6px;font-size:16px" placeholder="请输入密码"><button id="cloudPasswordConfirm" style="width:100%;margin-top:14px;padding:12px;border:0;border-radius:6px;background:#2196F3;color:white;font-size:15px;cursor:pointer">确认并注册</button><p id="cloudPasswordError" style="display:none;margin:10px 0 0;color:#d32f2f;font-size:13px">密码不能为空</p></div>';
+      document.body.appendChild(overlay);
+
+      const input = document.getElementById('cloudPasswordInput');
+      const button = document.getElementById('cloudPasswordConfirm');
+      const error = document.getElementById('cloudPasswordError');
+      const done = () => {
+        const value = input.value.trim();
+        if (!value) {
+          error.style.display = 'block';
+          input.focus();
+          return;
+        }
+        overlay.remove();
+        resolve(value);
+      };
+      button.onclick = done;
+      input.onkeydown = (event) => {
+        if (event.key === 'Enter') done();
+      };
+      setTimeout(() => input.focus(), 50);
+    })
+  `);
+}
 
 function createWindow() {
   // 设置窗口图标
@@ -114,8 +152,34 @@ function createWindow() {
     }
   });
 
-  // Start HTTP server
-  startServer();
+  mainWindow.webContents.once('did-finish-load', () => {
+    startServer().then(async () => {
+    try {
+      const info = getServerInfo();
+      console.log('[cloud-register] start', {
+        workerBaseUrl: cloudSync.readConfig().workerBaseUrl,
+        lanIps: getLocalIPs(),
+        port: info.port
+      });
+      await cloudSync.ensureRegistered({
+        lanIps: getLocalIPs(),
+        port: info.port,
+        getPassword: promptForCloudPassword
+      });
+      setCloudRegistrationError(null);
+      console.log('[cloud-register] success', cloudSync.getClientInfo(info.port));
+      if (mainWindow) {
+        mainWindow.webContents.send('server-info-changed');
+      }
+    } catch (error) {
+      console.error('[cloud-register] failed:', error);
+      setCloudRegistrationError(error);
+      if (mainWindow) {
+        mainWindow.webContents.send('server-info-changed');
+      }
+    }
+    });
+  });
 }
 
 // 创建系统托盘
@@ -249,6 +313,7 @@ function showWindow() {
 app.whenReady().then(() => {
   createWindow();
   createTray();  // 创建托盘
+  initPinyinInput();  // 初始化拼音输入法模块（独立功能，不影响现有逻辑）
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

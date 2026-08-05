@@ -10,6 +10,8 @@ const fs = require('fs');
 const Store = require('electron-store');
 const store = new Store();
 const { pasteWithPowerShell } = require('./windows-paste-helper');
+const cloudSync = require('./cloudSyncService');
+const { startNetworkMonitor } = require('./networkMonitor');
 
 // 获取 Electron app 对象（在主进程中可用）
 const electronApp = global.electronApp || null;
@@ -92,6 +94,9 @@ const app = express();
 let server;
 let serverPort;
 let serverIP;
+let serverIPs = [];
+let cloudRegistrationError = null;
+let stopNetworkMonitor = null;
 let connectedClients = new Map();
 
 // WebSocket服务器
@@ -198,17 +203,27 @@ async function ensureWindowFocus() {
     }
 }
 
-// Get local IP address
-function getLocalIP() {
+function sortLanIps(ips) {
+  const rank = (ip) => ip.startsWith('192.') ? 0 : ip.startsWith('100.') ? 1 : ip.startsWith('10.') ? 2 : 3;
+  return [...new Set(ips)].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
+
+// Get local IP addresses
+function getLocalIPs() {
   const interfaces = os.networkInterfaces();
+  const ips = [];
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
+      if (iface.family === 'IPv4' && !iface.internal && /^(192\.|100\.|10\.)/.test(iface.address)) {
+        ips.push(iface.address);
       }
     }
   }
-  return '127.0.0.1';
+  return sortLanIps(ips);
+}
+
+function getLocalIP() {
+  return getLocalIPs()[0] || '127.0.0.1';
 }
 
 // Paste text at cursor position
@@ -426,7 +441,7 @@ app.post('/send-to-phones', upload.single('file'), async (req, res) => {
 });
 
 // 客户端连接注册端点
-app.post('/connect', (req, res) => {
+app.post('/connect', async (req, res) => {
   const clientIP = req.ip || req.connection.remoteAddress;
 
   // 注册新连接的客户端
@@ -436,6 +451,13 @@ app.post('/connect', (req, res) => {
   });
 
   console.log(`Client connected from ${clientIP}. Total clients: ${connectedClients.size}`);
+  try {
+    serverIPs = getLocalIPs();
+    serverIP = serverIPs[0] || '127.0.0.1';
+    await cloudSync.updateIps({ lanIps: serverIPs, port: serverPort });
+  } catch (error) {
+    console.error('Failed to sync IPs after client connect:', error.message);
+  }
   res.json({ status: 'connected', clientIP: clientIP });
 });
 
@@ -557,7 +579,8 @@ function startServer() {
   return new Promise((resolve) => {
     server = app.listen(0, () => {
       serverPort = server.address().port;
-      serverIP = getLocalIP();
+      serverIPs = getLocalIPs();
+      serverIP = serverIPs[0] || '127.0.0.1';
       console.log(`Server running on ${serverIP}:${serverPort}`);
 
       // 设置服务器超时
@@ -582,6 +605,18 @@ function startServer() {
         });
       });
 
+      if (!stopNetworkMonitor) {
+        stopNetworkMonitor = startNetworkMonitor({
+          getLanIps: getLocalIPs,
+          getPort: () => serverPort,
+          onChange: async ({ lanIps, port }) => {
+            serverIPs = lanIps;
+            serverIP = lanIps[0] || '127.0.0.1';
+            await cloudSync.updateIps({ lanIps, port });
+          }
+        });
+      }
+
       resolve();
     });
   });
@@ -589,11 +624,16 @@ function startServer() {
 
 // Get server info
 function getServerInfo() {
+  const cloud = cloudSync.getClientInfo(serverPort);
   return {
     ip: serverIP,
+    ips: serverIPs,
     port: serverPort,
-    url: `http://${serverIP}:${serverPort}`,
+    url: cloud.cloudUrl,
+    localUrl: `http://${serverIP}:${serverPort}`,
     wsUrl: `ws://${serverIP}:${serverPort}`,
+    cloud,
+    cloudRegistrationError,
     connectedClients: Array.from(connectedClients.entries()).map(([ip, data]) => ({
       ip,
       ...data
@@ -631,5 +671,9 @@ app.use((error, req, res, next) => {
 
 module.exports = {
   startServer,
-  getServerInfo
+  getServerInfo,
+  getLocalIPs,
+  setCloudRegistrationError: (error) => {
+    cloudRegistrationError = error ? String(error.stack || error.message || error) : null;
+  }
 };

@@ -1,0 +1,17 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "talktunnel-discovery",
+	"main": "src/index.js",
+	"compatibility_date": "2026-07-01",
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "talktunnel-discovery",
+			"database_id": "4f64d3bb-af57-4aa3-ac15-5663c0d95f59"
+		}
+	]
+}

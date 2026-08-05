@@ -1,0 +1,15 @@
+{
+  "name": "talktunnel-discovery-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply talktunnel-discovery --local",
+    "db:migrate": "wrangler d1 migrations apply talktunnel-discovery --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.106.0"
+  }
+}

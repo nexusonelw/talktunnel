@@ -9,7 +9,9 @@ async function updateServerInfo() {
     serverInfo = await ipcRenderer.invoke('get-server-info');
     
     // Update UI
-    document.getElementById('ipAddress').textContent = serverInfo.ip;
+    document.getElementById('ipAddress').textContent = serverInfo.ips && serverInfo.ips.length
+      ? serverInfo.ips.join(', ')
+      : serverInfo.ip;
     document.getElementById('port').textContent = serverInfo.port;
     document.getElementById('connectedClients').textContent = serverInfo.connectedClients.length;
     
@@ -37,7 +39,12 @@ async function updateServerInfo() {
         }
       });
     } else {
-      console.warn('No server URL available for QR code generation');
+      const qrcodeContainer = document.getElementById('qrcode');
+      const message = serverInfo.cloudRegistrationError
+        ? `Cloudflare registration failed:<br><pre style="white-space: pre-wrap; text-align: left;">${serverInfo.cloudRegistrationError}</pre>`
+        : 'Cloudflare registration required. Please enter the device password to register.';
+      qrcodeContainer.innerHTML = `<p style="color: red;">${message}</p>`;
+      console.warn('No Cloudflare URL available for QR code generation');
     }
   } catch (error) {
     console.error('Failed to get server info:', error);
@@ -46,6 +53,7 @@ async function updateServerInfo() {
 
 // Update server info on load
 updateServerInfo();
+ipcRenderer.on('server-info-changed', updateServerInfo);
 
 // Update connected clients count every 5 seconds
 setInterval(updateServerInfo, 5000);
@@ -123,3 +131,96 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
+// 快捷键录制器：点击按钮进入录制，按下组合键自动转 Electron accelerator 文本
+function setupHotkeyRecorder(inputEl, btnEl) {
+  if (!inputEl || !btnEl) return;
+  let recording = false;
+
+  function reset() {
+    btnEl.textContent = '录制快捷键';
+    btnEl.style.background = '';
+    btnEl.style.color = '';
+  }
+  function start() {
+    recording = true;
+    btnEl.textContent = '按下快捷键…';
+    btnEl.style.background = '#FF9800';
+    btnEl.style.color = '#fff';
+    inputEl.value = '';
+    inputEl.placeholder = '请按下组合键…';
+    inputEl.blur();
+  }
+  function stop() { recording = false; reset(); }
+
+  btnEl.addEventListener('click', () => { if (recording) { stop(); return; } start(); });
+
+  document.addEventListener('keydown', (e) => {
+    if (recording && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); stop(); inputEl.placeholder = '点击右侧按钮录制快捷键'; return; }
+    if (!recording) return;
+    // 只按修饰键忽略
+    if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const isMac = navigator.platform.indexOf('Mac') >= 0;
+    const parts = [];
+    if (isMac && e.metaKey) parts.push('CommandOrControl');
+    else if (!isMac && e.ctrlKey) parts.push('CommandOrControl');
+    if (isMac && e.ctrlKey) parts.push('Control');
+    if (!isMac && e.metaKey) parts.push('Super');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.altKey) parts.push('Alt');
+    let key = e.key;
+    if (key === ' ') key = 'Space';
+    if (key.length === 1) key = key.toUpperCase();
+    parts.push(key);
+    inputEl.value = parts.join('+');
+    stop();
+  }, true);
+}
+
+// ===== 拼音输入法 LLM 设置弹窗（独立功能，不影响现有逻辑） =====
+(function initLlmSettings() {
+  function $(id) { return document.getElementById(id); }
+  const overlay = $('llm-settings-overlay');
+  if (!overlay) return;
+
+  function open() {
+    // 读取当前配置并填充
+    ipcRenderer.invoke('pinyin:get-config').then((cfg) => {
+      if (!cfg) return;
+      $('llm-baseurl').value = cfg.baseURL || '';
+      $('llm-apikey').value = cfg.apiKey || '';
+      $('llm-model').value = cfg.model || '';
+      $('llm-hotkey').value = cfg.hotkey || '';
+      overlay.classList.add('show');
+    }).catch((e) => {
+      console.error('读取 LLM 配置失败:', e);
+      alert('读取设置失败：' + (e && e.message ? e.message : e));
+    });
+  }
+
+  function close() { overlay.classList.remove('show'); }
+
+  $('openLlmSettings').addEventListener('click', open);
+  $('llm-cancel').addEventListener('click', close);
+  // 原先“点击外部自动关闭”已移除，避免误关。只能用保存/取消按钮关闭。
+
+  // 快捷键录制控件：点击按钮 → 按下组合键 → 自动填入 accelerator 格式
+  setupHotkeyRecorder($('llm-hotkey'), $('llm-record'));
+
+  $('llm-save').addEventListener('click', () => {
+    const cfg = {
+      baseURL: $('llm-baseurl').value.trim(),
+      apiKey: $('llm-apikey').value.trim(),
+      model: $('llm-model').value.trim(),
+      hotkey: $('llm-hotkey').value.trim()
+    };
+    ipcRenderer.invoke('pinyin:set-config', cfg).then(() => {
+      alert('设置已保存');
+      close();
+    }).catch((e) => {
+      alert('保存失败：' + (e && e.message ? e.message : e));
+    });
+  });
+})();

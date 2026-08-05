@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS clients (
+  uuid TEXT PRIMARY KEY,
+  salt TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  registration_secret_hash TEXT NOT NULL,
+  lan_ips TEXT NOT NULL,
+  port INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

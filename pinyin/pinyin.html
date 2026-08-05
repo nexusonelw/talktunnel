@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>拼音输入面板</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: #1e1e1e;
+      color: #e4e4e4;
+      overflow: hidden;
+      user-select: none;
+    }
+    #app {
+      display: flex; flex-direction: column;
+      width: 100%; height: 100%;
+      border: 1px solid #3a3a3a;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 8px 30px rgba(0,0,0,.5);
+    }
+    /* 标题栏（可拖动） */
+    .titlebar {
+      height: 34px; flex: 0 0 34px;
+      background: #252526;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 10px;
+      -webkit-app-region: drag;
+    }
+    .titlebar .title {
+      font-size: 12px; color: #9cdcfe; letter-spacing: .5px;
+    }
+    .titlebar .actions { display: flex; gap: 8px; -webkit-app-region: no-drag; }
+    .icon-btn {
+      width: 24px; height: 24px; border: 0; border-radius: 6px;
+      background: transparent; color: #ccc; cursor: pointer;
+      font-size: 14px; display: flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    .icon-btn:hover { background: #3a3a3a; color: #fff; }
+    .icon-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .icon-btn:disabled:hover { background: transparent; color: #ccc; }
+    .icon-btn.close:hover { background: #e53935; color: #fff; }
+
+    /* 内容区 */
+    .body {
+      flex: 1 1 auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; overflow: hidden;
+    }
+    label.section-label {
+      font-size: 12px; color: #888; margin-bottom: -4px;
+    }
+    #pinyin-input {
+      width: 100%; flex: 1 1 auto; min-height: 200px;
+      resize: none; padding: 12px 14px;
+      background: #2d2d2d; color: #e4e4e4;
+      border: 1px solid #3a3a3a; border-radius: 8px;
+      font-size: 16px; line-height: 1.7;
+      outline: none; transition: border-color .15s;
+      user-select: text;
+    }
+    #pinyin-input:focus { border-color: #007acc; }
+
+    .result-wrap { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; max-height: 220px; }
+    #result {
+      width: 100%; min-height: 48px; max-height: 220px; overflow-y: auto;
+      padding: 10px 12px; background: #252526; color: #dcdcaa;
+      border: 1px solid #3a3a3a; border-radius: 8px;
+      font-size: 15px; line-height: 1.6; white-space: pre-wrap;
+      user-select: text;
+    }
+    #result.empty { color: #666; font-style: italic; }
+
+    /* 底部按钮 */
+    .footer { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px; padding-top: 2px; }
+    .btn {
+      flex: 1 1 auto; min-width: 80px; padding: 9px 12px; border: 0; border-radius: 8px;
+      font-size: 14px; white-space: nowrap; cursor: pointer; transition: background .15s, opacity .15s;
+    }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: #007acc; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #1a8ad4; }
+    .btn-ghost { background: #2d2d2d; color: #ccc; }
+    .btn-ghost:hover:not(:disabled) { background: #3a3a3a; }
+    .btn-copy { background: #4caf50; color: #fff; }
+    .btn-copy:hover:not(:disabled) { background: #45a049; }
+    .btn-insert { background: #00897b; color: #fff; }
+    .btn-insert:hover:not(:disabled) { background: #00695c; }
+
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,.3); border-top-color: #fff;
+      border-radius: 50%; vertical-align: -2px; margin-right: 6px;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* 设置弹窗 */
+    #settings-overlay {
+      display: none; position: absolute; inset: 0;
+      background: rgba(0,0,0,.55); z-index: 50;
+      align-items: center; justify-content: center;
+    }
+    #settings-overlay.show { display: flex; }
+    .settings-card {
+      width: 92%; max-width: 360px; background: #252526;
+      border: 1px solid #3a3a3a; border-radius: 10px;
+      padding: 18px; display: flex; flex-direction: column; gap: 12px;
+    }
+    .settings-card h3 { font-size: 15px; color: #9cdcfe; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 12px; color: #888; }
+    .field input {
+      padding: 8px 10px; background: #2d2d2d; color: #e4e4e4;
+      border: 1px solid #3a3a3a; border-radius: 6px; font-size: 13px; outline: none;
+    }
+    .field input:focus { border-color: #007acc; }
+    .settings-actions { display: flex; gap: 8px; margin-top: 4px; }
+
+    /* 顶部提示条 */
+    .toast {
+      position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+      background: #007acc; color: #fff; padding: 6px 14px; border-radius: 16px;
+      font-size: 12px; opacity: 0; transition: opacity .25s; pointer-events: none;
+      z-index: 100;
+    }
+    .toast.show { opacity: 1; }
+
+    /* 无障碍权限提示横幅 */
+    .a11y-banner {
+      display: none; align-items: center; gap: 10px;
+      padding: 8px 12px; margin-bottom: 8px;
+      background: #5d3a00; border: 1px solid #ff9800; border-radius: 8px;
+      color: #fffbf0; font-size: 12px; line-height: 1.5;
+    }
+    .a11y-banner.show { display: flex; }
+    .a11y-banner .a11y-text { flex: 1; }
+    .a11y-banner button {
+      flex: 0 0 auto; padding: 6px 12px; border: 0; border-radius: 6px;
+      background: #ff9800; color: #fff; font-size: 12px; cursor: pointer;
+    }
+    .a11y-banner button:hover { background: #f57c00; }
+    .a11y-banner .a11y-close {
+      background: transparent; color: #fffbf0; font-size: 14px; padding: 2px 6px;
+    }
+    .a11y-banner .a11y-close:hover { background: rgba(255,255,255,.15); }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="titlebar">
+      <span class="title">拼音 → 汉字 · LLM 转换</span>
+      <div class="actions">
+        <button class="icon-btn" id="btn-undo" title="撤销 (⌘Z)">↶</button>
+        <button class="icon-btn" id="btn-redo" title="恢复 (⌘⇧Z)">↷</button>
+        <button class="icon-btn" id="btn-settings" title="设置">⚙</button>
+        <button class="icon-btn close" id="btn-close" title="关闭">✕</button>
+      </div>
+    </div>
+
+    <div class="body">
+      <!-- macOS 无障碍权限提示横幅 -->
+      <div id="a11y-banner" class="a11y-banner">
+        <span class="a11y-text">未授予辅助功能权限，「插入」功能无法自动输入。请前往系统设置开启 TalkTunnel 权限，开启后点击“重试”。</span>
+        <button id="a11y-open">前往设置</button>
+        <button id="a11y-retry">重试</button>
+        <button class="a11y-close" id="a11y-dismiss">✕</button>
+      </div>
+      <label class="section-label">输入拼音 · 转换后汉字会填回这里，可继续编辑再转换</label>
+      <textarea id="pinyin-input" placeholder="在此输入拼音，例如：wo xiang chuangjian yige pinyin shurufa" autofocus></textarea>
+
+      <div class="footer">
+        <button class="btn btn-primary" id="btn-convert"><span id="convert-text">转换为汉字</span></button>
+        <button class="btn btn-primary" id="btn-convert-format" style="background:#6a1b9a;">处理格式并转换</button>
+        <button class="btn btn-insert" id="btn-insert" disabled>插入</button>
+        <button class="btn btn-copy" id="btn-copy" disabled>复制</button>
+        <button class="btn btn-ghost" id="btn-clear">清空</button>
+      </div>
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div id="settings-overlay">
+      <div class="settings-card">
+        <h3>LLM 接口设置</h3>
+        <div class="field">
+          <label>Base URL（OpenAI 兼容）</label>
+          <input id="cfg-baseurl" type="text" placeholder="https://api.openai.com/v1" />
+        </div>
+        <div class="field">
+          <label>API Key</label>
+          <input id="cfg-apikey" type="password" placeholder="sk-..." />
+        </div>
+        <div class="field">
+          <label>模型名称</label>
+          <input id="cfg-model" type="text" placeholder="gpt-4o-mini" />
+        </div>
+        <div class="field">
+          <label>快捷键（保存后立即生效）</label>
+          <div style="display:flex; gap:8px;">
+            <input id="cfg-hotkey" type="text" placeholder="点击右侧按钮录制快捷键" readonly style="flex:1; background:#1e1e1e;" />
+            <button type="button" id="cfg-record" class="btn btn-ghost" style="flex:0 0 100px;">录制快捷键</button>
+          </div>
+        </div>
+        <div class="settings-actions">
+          <button class="btn btn-primary" id="cfg-save">保存</button>
+          <button class="btn btn-ghost" id="cfg-cancel">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <script src="pinyin-renderer.js"></script>
+</body>
+</html>
