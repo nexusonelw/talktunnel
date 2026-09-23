@@ -344,6 +344,14 @@ ipcMain.handle('get-server-info', () => {
   return getServerInfo();
 });
 
+ipcMain.handle('cloud:get-access-password', () => cloudSync.getAccessPassword());
+ipcMain.handle('cloud:set-access-password', async (_event, password) => {
+  const info = getServerInfo();
+  await cloudSync.setAccessPassword(password, { lanIps: getLocalIPs(), port: info.port });
+  setCloudRegistrationError(null);
+  if (mainWindow) mainWindow.webContents.send('server-info-changed');
+});
+
 // 处理外部链接
 ipcMain.on('open-external-link', (event, url) => {
   console.log('Opening external link:', url);

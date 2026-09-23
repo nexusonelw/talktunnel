@@ -95,6 +95,8 @@ https://talktunnel.onlinesoftware.top/<UUID>
 
 手机扫码后输入同一个设备密码，再由网页尝试直连桌面端局域网 IP。
 
+桌面客户端右上角的钥匙按钮可查看和修改访问密码。首次注册后密码会保存在本机的 Electron 配置中，方便查看；Cloudflare D1 只保存加盐哈希。升级前已注册的设备无法从哈希恢复旧密码，设置一个新密码即可覆盖。手机网页每次打开都要求输入密码，密码变更后已打开的网页在下次发送时也会重新验证。
+
 ## 重要限制
 
 Cloudflare Worker 页面是 HTTPS，而桌面端当前局域网服务是 HTTP/WS。部分浏览器会拦截 HTTPS 页面访问 `http://192.168.x.x` 或 `ws://192.168.x.x`，这是 Mixed Content 限制，不是 CORS 能完全解决的问题。

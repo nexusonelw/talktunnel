@@ -81,11 +81,34 @@ async function ensureRegistered({ lanIps, port, getPassword }) {
     registrationSecret = result.registrationSecret;
     store.set('cloudClient.uuid', uuid);
     store.set('cloudClient.registrationSecret', registrationSecret);
+    store.set('cloudClient.password', password);
   } else {
     await updateIps({ lanIps, port });
   }
 
   return getClientInfo(port);
+}
+
+function getAccessPassword() {
+  return store.get('cloudClient.password') || '';
+}
+
+async function setAccessPassword(password, { lanIps, port }) {
+  if (typeof password !== 'string' || !password.trim() || password.length > 128) {
+    throw new Error('访问密码须为 1–128 个字符，且不能全为空格');
+  }
+  if (!enabled()) throw new Error('Cloudflare 服务尚未配置');
+
+  const uuid = store.get('cloudClient.uuid');
+  const registrationSecret = store.get('cloudClient.registrationSecret');
+  if (!uuid || !registrationSecret) {
+    if (!port || !lanIps.length) throw new Error('本地服务尚未就绪，请稍后重试');
+    await ensureRegistered({ lanIps, port, getPassword: async () => password });
+    return;
+  }
+
+  await postJson('/api/change-password', { uuid, registrationSecret, password });
+  store.set('cloudClient.password', password);
 }
 
 async function updateIps({ lanIps, port }) {
@@ -118,5 +141,7 @@ module.exports = {
   ensureRegistered,
   updateIps,
   getClientInfo,
-  readConfig
+  readConfig,
+  getAccessPassword,
+  setAccessPassword
 };

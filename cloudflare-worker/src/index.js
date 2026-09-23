@@ -13,10 +13,11 @@ export default {
 
     try {
       const url = new URL(request.url);
-      if (url.pathname === '/api/register' && request.method === 'POST') return register(request, env);
-      if (url.pathname === '/api/update-ips' && request.method === 'POST') return updateIps(request, env);
-      if (url.pathname === '/api/auth' && request.method === 'POST') return auth(request, env);
-      if (url.pathname === '/api/client' && request.method === 'POST') return client(request, env);
+      if (url.pathname === '/api/register' && request.method === 'POST') return await register(request, env);
+      if (url.pathname === '/api/update-ips' && request.method === 'POST') return await updateIps(request, env);
+      if (url.pathname === '/api/change-password' && request.method === 'POST') return await changePassword(request, env);
+      if (url.pathname === '/api/auth' && request.method === 'POST') return await auth(request, env);
+      if (url.pathname === '/api/client' && request.method === 'POST') return await client(request, env);
       if (url.pathname === '/manifest.webmanifest' && request.method === 'GET') return manifestResponse(url);
       if (url.pathname === '/sw' && request.method === 'GET') return serviceWorkerResponse();
       if (url.pathname === '/pwa-icon.svg' && request.method === 'GET') return iconResponse();
@@ -35,7 +36,7 @@ async function register(request, env) {
   const password = String(body.password || '');
   const lanIps = cleanIps(body.lanIps);
   const port = Number(body.port);
-  if (!password || !lanIps.length || !Number.isInteger(port)) return json({ error: 'Invalid registration' }, 400);
+  if (!password.trim() || password.length > 128 || !lanIps.length || !Number.isInteger(port)) return json({ error: 'Invalid registration' }, 400);
 
   const uuid = crypto.randomUUID();
   const salt = randomBase64(16);
@@ -68,6 +69,29 @@ async function updateIps(request, env) {
     .bind(JSON.stringify(lanIps), port, uuid)
     .run();
 
+  return json({ ok: true });
+}
+
+async function changePassword(request, env) {
+  const body = await request.json();
+  const uuid = String(body.uuid || '');
+  const registrationSecret = String(body.registrationSecret || '');
+  const password = String(body.password || '');
+  if (!uuid || !registrationSecret || !password.trim() || password.length > 128) {
+    return json({ error: 'Invalid password update' }, 400);
+  }
+
+  const row = await env.DB.prepare('SELECT salt, registration_secret_hash FROM clients WHERE uuid = ?').bind(uuid).first();
+  if (!row || !(await matchesSecret(registrationSecret, row.salt, row.registration_secret_hash))) {
+    return json({ error: 'Unauthorized' }, 401);
+  }
+
+  const salt = randomBase64(16);
+  const passwordHash = await hashSecret(password, salt);
+  const registrationSecretHash = await hashSecret(registrationSecret, salt);
+  await env.DB.prepare('UPDATE clients SET salt = ?, password_hash = ?, registration_secret_hash = ? WHERE uuid = ?')
+    .bind(salt, passwordHash, registrationSecretHash, uuid)
+    .run();
   return json({ ok: true });
 }
 
@@ -219,12 +243,19 @@ function mobilePage(uuid) {
   <link rel="apple-touch-icon" href="/pwa-icon.svg">
   <title>TalkTunnel Mobile</title>
   <style>
-    *{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f5f5;min-height:100vh;display:flex;flex-direction:column}.app-bar{background:#2196F3;color:white;padding:16px 20px;box-shadow:0 2px 4px rgba(0,0,0,.1);position:sticky;top:0;z-index:10}.app-bar h1{font-size:20px;font-weight:500}.container{flex:1;padding:20px;display:flex;flex-direction:column;gap:16px;overflow-y:auto}.input-field{width:100%;padding:16px;font-size:16px;border:1px solid #ddd;border-radius:8px;background:white}.input-field:focus{outline:none;border-color:#2196F3}.textarea-field{min-height:200px;resize:vertical;font-family:inherit}.button{background:#2196F3;color:white;border:0;padding:14px 24px;font-size:16px;border-radius:8px;cursor:pointer;width:100%;text-transform:uppercase;font-weight:500}.button:disabled{background:#ccc;cursor:not-allowed}.settings-section,.file-section{background:white;border-radius:8px;padding:16px;box-shadow:0 2px 4px rgba(0,0,0,.1)}.settings-row,.manual-checkbox-row{display:flex;align-items:center;gap:12px}.settings-label,.hint,.file-info{color:#666;font-size:14px}.delay-input{width:80px;padding:8px;border:1px solid #ddd;border-radius:4px;text-align:center}.status-message{padding:12px 16px;border-radius:8px;text-align:center}.success{background:#4CAF50;color:white}.error{background:#f44336;color:white}.connected{background:#e8f5e9;color:#2e7d32;border:1px solid #4caf50}.file-label{background:#2196F3;color:white;padding:12px 20px;border-radius:8px;display:block;text-align:center}.file-input-wrapper input{position:absolute;left:-9999px}.selected-files-list{margin-top:10px}.file-item{display:flex;justify-content:space-between;gap:8px;padding:8px;margin:5px 0;background:#f5f5f5;border-radius:4px;font-size:14px}.download-area{background:#e3f2fd;border:2px dashed #2196F3;border-radius:8px;padding:20px;text-align:center;min-height:100px}.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px}.modal-content{background:white;margin:clamp(16px,8vh,64px) auto;padding:24px;width:100%;max-width:400px;max-height:calc(100vh - 32px);border-radius:12px;display:flex;flex-direction:column;gap:12px}.modal-header{font-size:20px;margin-bottom:4px}.modal-body{color:#666;margin-bottom:24px;line-height:1.5}#historyList{overflow-y:auto;-webkit-overflow-scrolling:touch;max-height:55vh;padding-right:2px}.history-item{width:100%;text-align:left;background:#f7f7f7;border:0;border-radius:6px;padding:10px;margin:6px 0;white-space:pre-wrap;word-break:break-word}.install-banner{display:none;position:fixed;left:12px;right:12px;bottom:12px;z-index:900;background:#fff;border:1px solid #d7e8fb;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:12px;gap:10px;align-items:center}.install-banner.show{display:flex}.install-banner p{flex:1;color:#333;font-size:14px;line-height:1.4}.install-actions{display:flex;gap:8px}.install-actions button{border:0;border-radius:6px;padding:9px 12px;font-size:13px}.install-primary{background:#2196F3;color:#fff}.install-close{background:#eee;color:#333}
+    *{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f5f5;min-height:100vh;display:flex;flex-direction:column}.app-bar{background:#2196F3;color:white;padding:16px 20px;box-shadow:0 2px 4px rgba(0,0,0,.1);position:sticky;top:0;z-index:10}.app-bar h1{font-size:20px;font-weight:500}.container{flex:1;padding:20px;display:flex;flex-direction:column;gap:16px;overflow-y:auto}.input-field{width:100%;padding:16px;font-size:16px;border:1px solid #ddd;border-radius:8px;background:white}.input-field:focus{outline:none;border-color:#2196F3}.textarea-field{min-height:200px;resize:vertical;font-family:inherit}.button{background:#2196F3;color:white;border:0;padding:14px 24px;font-size:16px;border-radius:8px;cursor:pointer;width:100%;text-transform:uppercase;font-weight:500}.button:disabled{background:#ccc;cursor:not-allowed}.settings-section,.file-section{background:white;border-radius:8px;padding:16px;box-shadow:0 2px 4px rgba(0,0,0,.1)}.settings-row,.manual-checkbox-row{display:flex;align-items:center;gap:12px}.settings-label,.hint,.file-info{color:#666;font-size:14px}.delay-input{width:80px;padding:8px;border:1px solid #ddd;border-radius:4px;text-align:center}.status-message{padding:12px 16px;border-radius:8px;text-align:center}.success{background:#4CAF50;color:white}.error{background:#f44336;color:white}.connected{background:#e8f5e9;color:#2e7d32;border:1px solid #4caf50}.file-label{background:#2196F3;color:white;padding:12px 20px;border-radius:8px;display:block;text-align:center}.file-input-wrapper input{position:absolute;left:-9999px}.selected-files-list{margin-top:10px}.file-item{display:flex;justify-content:space-between;gap:8px;padding:8px;margin:5px 0;background:#f5f5f5;border-radius:4px;font-size:14px}.download-area{background:#e3f2fd;border:2px dashed #2196F3;border-radius:8px;padding:20px;text-align:center;min-height:100px}.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px}.modal-content{background:white;margin:clamp(16px,8vh,64px) auto;padding:24px;width:100%;max-width:400px;max-height:calc(100vh - 32px);border-radius:12px;display:flex;flex-direction:column;gap:12px}.modal-header{font-size:20px;margin-bottom:4px}.modal-body{color:#666;margin-bottom:24px;line-height:1.5}#historyList{overflow-y:auto;-webkit-overflow-scrolling:touch;max-height:55vh;padding-right:2px}.history-item{width:100%;text-align:left;background:#f7f7f7;border:0;border-radius:6px;padding:10px;margin:6px 0;white-space:pre-wrap;word-break:break-word}.install-banner{display:none;position:fixed;left:12px;right:12px;bottom:12px;z-index:900;background:#fff;border:1px solid #d7e8fb;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:12px;gap:10px;align-items:center}.install-banner.show{display:flex}.install-banner p{flex:1;color:#333;font-size:14px;line-height:1.4}.install-actions{display:flex;gap:8px}.install-actions button{border:0;border-radius:6px;padding:9px 12px;font-size:13px}.install-primary{background:#2196F3;color:#fff}.install-close{background:#eee;color:#333}.auth-card{width:calc(100% - 40px);max-width:400px;margin:48px auto;background:#fff;border-radius:12px;padding:24px;box-shadow:0 4px 16px rgba(0,0,0,.12)}.auth-card h2{font-size:20px;margin-bottom:12px}.auth-card p{color:#666;font-size:14px;line-height:1.5;margin-bottom:16px}.auth-card input{width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:8px;margin-bottom:12px}.auth-card .auth-error{color:#d32f2f;margin:12px 0 0}
   </style>
 </head>
 <body>
   <div class="app-bar"><h1>TalkTunnel Mobile</h1></div>
-  <div class="container">
+  <form id="authForm" class="auth-card">
+    <h2>输入访问密码</h2>
+    <p>请输入桌面客户端设置的密码。验证成功后才会获取设备地址并启用发送。</p>
+    <input id="authPassword" type="password" autocomplete="off" required autofocus aria-label="访问密码">
+    <button id="authSubmit" class="button" type="submit">连接设备</button>
+    <p id="authError" class="auth-error" role="alert"></p>
+  </form>
+  <div class="container" id="deviceContent" style="display:none">
     <div id="statusMessage"></div>
     <div class="settings-section">
       <div class="settings-row"><label class="settings-label" for="delayInput">自动发送延迟时间:</label><input type="number" id="delayInput" class="delay-input" min="0" max="10" step="0.5" value="2"><span class="settings-label">秒</span></div>
@@ -263,22 +294,23 @@ function mobilePage(uuid) {
     let heartbeatInterval = null;
     let selectedFiles = [];
     const DB_NAME = 'talktunnel-history';
-    const PASSWORD_KEY = 'talktunnel-password:' + uuid;
-    const DEVICE_KEY = 'talktunnel-device:' + uuid;
     const TEXT_DRAFT_KEY = 'talktunnel-text-draft:' + uuid;
     const INSTALL_DISMISSED_KEY = 'talktunnel-install-dismissed';
     let deferredInstallPrompt = null;
+    let pwaSetup = false;
     let deviceRefreshUsed = false;
     let deviceRefreshExhausted = false;
 
-    setupPwaInstall();
-    restoreTextDraft();
+    localStorage.removeItem('talktunnel-password:' + uuid);
+    localStorage.removeItem('talktunnel-device:' + uuid);
     window.addEventListener('pagehide', saveTextDraft);
     window.addEventListener('beforeunload', saveTextDraft);
     window.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveTextDraft(); });
-    init();
+    authForm.addEventListener('submit', authenticate);
 
     function setupPwaInstall() {
+      if (pwaSetup) return;
+      pwaSetup = true;
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw').catch(() => {});
       }
@@ -341,23 +373,39 @@ function mobilePage(uuid) {
       return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
     }
 
-    async function init() {
-      password = localStorage.getItem(PASSWORD_KEY) || prompt('请输入设备密码') || '';
-      if (!password) return showError('认证失败', '需要设备密码');
+    async function authenticate(event) {
+      event.preventDefault();
+      const candidate = authPassword.value;
+      if (!candidate.trim()) return;
+      authSubmit.disabled = true;
+      authError.textContent = '';
       try {
-        device = await cloud('/api/auth', { uuid, password });
-        localStorage.setItem(PASSWORD_KEY, password);
-        cacheDevice();
+        const verifiedDevice = await cloud('/api/auth', { uuid, password: candidate });
+        password = candidate;
+        device = verifiedDevice;
+        deviceRefreshUsed = false;
+        deviceRefreshExhausted = false;
+        serverUrl = '';
+        authPassword.value = '';
+        authForm.style.display = 'none';
+        deviceContent.style.display = 'flex';
+        restoreTextDraft();
+        setupPwaInstall();
         await connectToDesktop();
       } catch (error) {
-        localStorage.removeItem(PASSWORD_KEY);
-        showError('认证失败', '密码错误或设备不存在');
+        authError.textContent = error.status === 401 ? '密码错误或设备不存在' : '验证失败，请检查网络后重试';
+      } finally {
+        authSubmit.disabled = false;
       }
     }
 
     async function cloud(path, body) {
       const res = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-      if (!res.ok) throw new Error('cloud failed');
+      if (!res.ok) {
+        const error = new Error('cloud failed');
+        error.status = res.status;
+        throw error;
+      }
       return res.json();
     }
 
@@ -384,11 +432,20 @@ function mobilePage(uuid) {
 
     async function refreshDevice() {
       device = await cloud('/api/client', { uuid, password });
-      cacheDevice();
     }
 
-    function cacheDevice() {
-      if (device) localStorage.setItem(DEVICE_KEY, JSON.stringify(device));
+    function lockAccess(message) {
+      password = '';
+      device = null;
+      serverUrl = '';
+      isConnected = false;
+      clearInterval(heartbeatInterval);
+      clearTimeout(debounceTimer);
+      if (ws) { ws.onclose = null; ws.close(); ws = null; }
+      deviceContent.style.display = 'none';
+      authForm.style.display = 'block';
+      authError.textContent = message;
+      authPassword.focus();
     }
 
     function saveTextDraft() {
@@ -423,6 +480,14 @@ function mobilePage(uuid) {
     }
 
     async function sendViaDesktop(path, options, behavior = {}) {
+      if (!device || !password) throw new Error('authentication required');
+      try {
+        await refreshDevice();
+      } catch (error) {
+        if (error.status === 401) lockAccess('密码已变更，请重新输入');
+        else showStatus('无法验证访问密码，请检查网络后重试。', 'error');
+        throw error;
+      }
       const refreshOnFailure = Boolean(behavior.refreshOnFailure);
       if (deviceRefreshExhausted) {
         showError('连接错误', '当前设备连接不可用，请刷新页面后重试。');
@@ -508,7 +573,7 @@ function mobilePage(uuid) {
         const data = JSON.parse(event.data);
         if (data.type === 'file') handleReceivedFile(data);
       };
-      ws.onclose = () => setTimeout(connectWebSocket, 5000);
+      ws.onclose = () => { if (password) setTimeout(connectWebSocket, 5000); };
     }
 
     function handleReceivedFile(data) {

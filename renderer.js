@@ -132,6 +132,48 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+(function initAccessPasswordSettings() {
+  const overlay = document.getElementById('access-password-overlay');
+  const input = document.getElementById('access-password-input');
+  const hint = document.getElementById('access-password-hint');
+  const save = document.getElementById('access-password-save');
+  const cancel = document.getElementById('access-password-cancel');
+  if (!overlay || !input) return;
+
+  document.getElementById('openAccessPassword').addEventListener('click', async () => {
+    try {
+      const password = await ipcRenderer.invoke('cloud:get-access-password');
+      input.value = password;
+      hint.textContent = password
+        ? '密码在此客户端可见。保存后，手机网页下次访问需输入新密码。'
+        : '此设备尚未在本地保存密码。输入新密码后会同步到 Cloudflare。';
+      overlay.classList.add('show');
+      input.focus();
+    } catch (error) {
+      alert('读取访问密码失败：' + error.message);
+    }
+  });
+
+  cancel.addEventListener('click', () => overlay.classList.remove('show'));
+  save.addEventListener('click', async () => {
+    const password = input.value;
+    if (!password.trim() || password.length > 128) {
+      hint.textContent = '访问密码须为 1–128 个字符，且不能全为空格。';
+      return;
+    }
+    save.disabled = true;
+    try {
+      await ipcRenderer.invoke('cloud:set-access-password', password);
+      overlay.classList.remove('show');
+      alert('访问密码已保存并同步到 Cloudflare');
+    } catch (error) {
+      hint.textContent = '保存失败：' + error.message;
+    } finally {
+      save.disabled = false;
+    }
+  });
+})();
+
 // 快捷键录制器：点击按钮进入录制，按下组合键自动转 Electron accelerator 文本
 function setupHotkeyRecorder(inputEl, btnEl) {
   if (!inputEl || !btnEl) return;
