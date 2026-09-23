@@ -6,6 +6,7 @@ const HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
 
 function createCommandProcessor({ store, pasteText, pressEnter, now = Date.now }) {
   const inFlight = new Map();
+  let tail = Promise.resolve();
   const history = new Map(Object.entries(store.get('processedCommands', {})));
 
   function persist(id, progress) {
@@ -44,10 +45,14 @@ function createCommandProcessor({ store, pasteText, pressEnter, now = Date.now }
   }
 
   return function processCommand(command) {
-    if (!command.id) return execute(command);
-    if (inFlight.has(command.id)) return inFlight.get(command.id);
-    const task = execute(command).finally(() => inFlight.delete(command.id));
-    inFlight.set(command.id, task);
+    if (command.id && inFlight.has(command.id)) return inFlight.get(command.id);
+    const task = tail.then(() => execute(command));
+    tail = task.catch(() => {});
+    if (command.id) {
+      const tracked = task.finally(() => inFlight.delete(command.id));
+      inFlight.set(command.id, tracked);
+      return tracked;
+    }
     return task;
   };
 }

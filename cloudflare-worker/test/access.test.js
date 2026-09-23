@@ -120,14 +120,16 @@ test('cloud relay only accepts authenticated text and desktop secret, then clear
   assert.notEqual(secondClaim.leaseToken, firstClaim.leaseToken);
 });
 
-test('mobile page starts with the device controls hidden and no cached password login', async () => {
+test('mobile page keeps controls hidden until authentication and supports saved passwords', async () => {
   const uuid = '11111111-1111-4111-8111-111111111111';
   const response = await worker.fetch(new Request(`https://example.test/${uuid}`), {});
   const html = await response.text();
   assert.match(html, /id="authForm"/);
   assert.match(html, /id="deviceContent" style="display:none"/);
-  assert.doesNotMatch(html, /localStorage\.getItem\('talktunnel-password:/);
-  assert.doesNotMatch(html, /localStorage\.setItem\('talktunnel-password:/);
+  assert.match(html, /id="forgetPasswordButton"/);
+  assert.match(html, /if \(localStorage\.getItem\(SAVED_PASSWORD_KEY\)\) void authenticate\(\)/);
+  assert.match(html, /localStorage\.setItem\(SAVED_PASSWORD_KEY, candidate\)/);
+  assert.match(html, /localStorage\.removeItem\(SAVED_PASSWORD_KEY\)/);
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script);
   assert.doesNotThrow(() => new vm.Script(script));

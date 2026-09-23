@@ -286,7 +286,7 @@ function json(data, status = 200) {
 
 function htmlResponse(html) {
   return new Response(html, {
-    headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' }
+    headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }
   });
 }
 
@@ -362,15 +362,15 @@ function mobilePage(uuid) {
   <title>TalkTunnel Mobile</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f5f5;min-height:100vh;display:flex;flex-direction:column}.app-bar{background:#2196F3;color:white;padding:16px 20px;box-shadow:0 2px 4px rgba(0,0,0,.1);position:sticky;top:0;z-index:10}.app-bar h1{font-size:20px;font-weight:500}.container{flex:1;padding:20px;display:flex;flex-direction:column;gap:16px;overflow-y:auto}.input-field{width:100%;padding:16px;font-size:16px;border:1px solid #ddd;border-radius:8px;background:white}.input-field:focus{outline:none;border-color:#2196F3}.textarea-field{min-height:200px;resize:vertical;font-family:inherit}.button{background:#2196F3;color:white;border:0;padding:14px 24px;font-size:16px;border-radius:8px;cursor:pointer;width:100%;text-transform:uppercase;font-weight:500}.button:disabled{background:#ccc;cursor:not-allowed}.settings-section,.file-section{background:white;border-radius:8px;padding:16px;box-shadow:0 2px 4px rgba(0,0,0,.1)}.settings-row,.manual-checkbox-row{display:flex;align-items:center;gap:12px}.settings-label,.hint,.file-info{color:#666;font-size:14px}.delay-input{width:80px;padding:8px;border:1px solid #ddd;border-radius:4px;text-align:center}.status-message{padding:12px 16px;border-radius:8px;text-align:center}.success{background:#4CAF50;color:white}.error{background:#f44336;color:white}.connected{background:#e8f5e9;color:#2e7d32;border:1px solid #4caf50}.file-label{background:#2196F3;color:white;padding:12px 20px;border-radius:8px;display:block;text-align:center}.file-input-wrapper input{position:absolute;left:-9999px}.selected-files-list{margin-top:10px}.file-item{display:flex;justify-content:space-between;gap:8px;padding:8px;margin:5px 0;background:#f5f5f5;border-radius:4px;font-size:14px}.download-area{background:#e3f2fd;border:2px dashed #2196F3;border-radius:8px;padding:20px;text-align:center;min-height:100px}.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px}.modal-content{background:white;margin:clamp(16px,8vh,64px) auto;padding:24px;width:100%;max-width:400px;max-height:calc(100vh - 32px);border-radius:12px;display:flex;flex-direction:column;gap:12px}.modal-header{font-size:20px;margin-bottom:4px}.modal-body{color:#666;margin-bottom:24px;line-height:1.5}#historyList{overflow-y:auto;-webkit-overflow-scrolling:touch;max-height:55vh;padding-right:2px}.history-item{width:100%;text-align:left;background:#f7f7f7;border:0;border-radius:6px;padding:10px;margin:6px 0;white-space:pre-wrap;word-break:break-word}.install-banner{display:none;position:fixed;left:12px;right:12px;bottom:12px;z-index:900;background:#fff;border:1px solid #d7e8fb;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:12px;gap:10px;align-items:center}.install-banner.show{display:flex}.install-banner p{flex:1;color:#333;font-size:14px;line-height:1.4}.install-actions{display:flex;gap:8px}.install-actions button{border:0;border-radius:6px;padding:9px 12px;font-size:13px}.install-primary{background:#2196F3;color:#fff}.install-close{background:#eee;color:#333}.auth-card{width:calc(100% - 40px);max-width:400px;margin:48px auto;background:#fff;border-radius:12px;padding:24px;box-shadow:0 4px 16px rgba(0,0,0,.12)}.auth-card h2{font-size:20px;margin-bottom:12px}.auth-card p{color:#666;font-size:14px;line-height:1.5;margin-bottom:16px}.auth-card input{width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:8px;margin-bottom:12px}.auth-card .auth-error{color:#d32f2f;margin:12px 0 0}
-    .pending{background:#fff3cd;color:#795548;border:1px solid #ffdf80}
+    .pending{background:#fff3cd;color:#795548;border:1px solid #ffdf80}.forget-password{align-self:center;border:0;background:transparent;color:#666;text-decoration:underline;padding:12px 8px;font-size:14px;cursor:pointer}
   </style>
 </head>
 <body>
   <div class="app-bar"><h1>TalkTunnel Mobile</h1></div>
   <form id="authForm" class="auth-card">
     <h2>输入访问密码</h2>
-    <p>请输入桌面客户端设置的密码。验证成功后才会获取设备地址并启用发送。</p>
-    <input id="authPassword" type="password" autocomplete="off" required autofocus aria-label="访问密码">
+    <p>请输入桌面客户端设置的密码。验证成功后会保存在这台设备，之后自动连接。</p>
+    <input id="authPassword" type="password" autocomplete="current-password" required autofocus aria-label="访问密码">
     <button id="authSubmit" class="button" type="submit">连接设备</button>
     <p id="authError" class="auth-error" role="alert"></p>
   </form>
@@ -395,6 +395,7 @@ function mobilePage(uuid) {
     </div>
     <div class="download-area" id="downloadArea"><p>接收的文件将显示在这里</p></div>
     <p class="hint">文本将自动粘贴到您的桌面</p>
+    <button id="forgetPasswordButton" class="forget-password" type="button">清空保存的密码</button>
   </div>
   <div id="installBanner" class="install-banner"><p id="installText">安装 TalkTunnel 到本机，之后可像 App 一样打开。</p><div class="install-actions"><button id="installNowButton" class="install-primary" type="button">安装</button><button id="installCloseButton" class="install-close" type="button">关闭</button></div></div>
   <div id="errorModal" class="modal"><div class="modal-content"><h2 class="modal-header" id="modalTitle">Error</h2><p class="modal-body" id="modalMessage"></p><button class="button" onclick="closeModal()">OK</button></div></div>
@@ -414,18 +415,23 @@ function mobilePage(uuid) {
     let selectedFiles = [];
     const DB_NAME = 'talktunnel-history';
     const TEXT_DRAFT_KEY = 'talktunnel-text-draft:' + uuid;
+    const SAVED_PASSWORD_KEY = 'talktunnel-password:' + uuid;
     const INSTALL_DISMISSED_KEY = 'talktunnel-install-dismissed';
     let deferredInstallPrompt = null;
     let pwaSetup = false;
     let pendingCommand = null;
     let latestRelayId = null;
 
-    localStorage.removeItem('talktunnel-password:' + uuid);
     localStorage.removeItem('talktunnel-device:' + uuid);
     window.addEventListener('pagehide', saveTextDraft);
     window.addEventListener('beforeunload', saveTextDraft);
     window.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveTextDraft(); });
     authForm.addEventListener('submit', authenticate);
+    forgetPasswordButton.addEventListener('click', () => {
+      localStorage.removeItem(SAVED_PASSWORD_KEY);
+      lockAccess('已清空保存的密码，请重新输入。');
+    });
+    if (localStorage.getItem(SAVED_PASSWORD_KEY)) void authenticate();
 
     function setupPwaInstall() {
       if (pwaSetup) return;
@@ -493,13 +499,15 @@ function mobilePage(uuid) {
     }
 
     async function authenticate(event) {
-      event.preventDefault();
-      const candidate = authPassword.value;
+      if (event) event.preventDefault();
+      const fromSaved = !event;
+      const candidate = fromSaved ? localStorage.getItem(SAVED_PASSWORD_KEY) || '' : authPassword.value;
       if (!candidate.trim()) return;
       authSubmit.disabled = true;
       authError.textContent = '';
       try {
         const verifiedDevice = await cloud('/api/auth', { uuid, password: candidate });
+        localStorage.setItem(SAVED_PASSWORD_KEY, candidate);
         password = candidate;
         device = verifiedDevice;
         pendingCommand = null;
@@ -511,6 +519,10 @@ function mobilePage(uuid) {
         setupPwaInstall();
         await connectToDesktop();
       } catch (error) {
+        if (fromSaved && error.status === 401) {
+          localStorage.removeItem(SAVED_PASSWORD_KEY);
+          authPassword.value = '';
+        }
         authError.textContent = error.status === 401 ? '密码错误或设备不存在' : '验证失败，请检查网络后重试';
       } finally {
         authSubmit.disabled = false;
@@ -556,6 +568,7 @@ function mobilePage(uuid) {
     }
 
     function lockAccess(message) {
+      localStorage.removeItem(SAVED_PASSWORD_KEY);
       password = '';
       device = null;
       serverUrl = '';

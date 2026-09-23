@@ -47,3 +47,27 @@ test('retry resumes after pasted text when the Enter step fails', async () => {
   assert.equal(pastes, 1);
   assert.equal(enters, 2);
 });
+
+test('different messages use the keyboard in order, even after a failed command', async () => {
+  const steps = [];
+  let releaseFirst;
+  const firstPaste = new Promise((resolve) => { releaseFirst = resolve; });
+  const process = createCommandProcessor({
+    store: makeStore(),
+    pasteText: async (text) => {
+      steps.push('start ' + text);
+      if (text === 'first') await firstPaste;
+      steps.push('end ' + text);
+      return text !== 'first';
+    },
+    pressEnter: async () => true
+  });
+  const first = process({ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', kind: 'text', text: 'first' });
+  const second = process({ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', kind: 'text', text: 'second' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(steps, ['start first']);
+  releaseFirst();
+  assert.equal(await first, false);
+  assert.equal(await second, true);
+  assert.deepEqual(steps, ['start first', 'end first', 'start second', 'end second']);
+});

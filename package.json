@@ -1,6 +1,6 @@
 {
   "name": "talktunnel",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "Cross-device text tunnel tool",
   "main": "main.js",
   "scripts": {
@@ -86,7 +86,8 @@
       "icon": "build/icons/mac/icon.icns",
       "extendInfo": {
         "CFBundleIconFile": "icon",
-        "LSUIElement": false
+        "LSUIElement": false,
+        "NSAppleEventsUsageDescription": "TalkTunnel 使用系统键盘操作，将接收的文本粘贴到当前输入框并发送回车。"
       },
       "hardenedRuntime": true,
       "gatekeeperAssess": false,

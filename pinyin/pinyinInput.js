@@ -202,16 +202,18 @@ function registerAllIPC() {
       // 等待焦点切换到外部应用（给够时间让上一应用重获焦点）
       await new Promise(r => setTimeout(r, 320));
       try {
-        const { keyboard, Key } = require('@nut-tree-fork/nut-js');
         // 先写入剪贴板
         clipboard.writeText(text);
-        // 模拟粘贴：Mac 用 Cmd+V，其他用 Ctrl+V
-        const mod = process.platform === 'darwin' ? Key.LeftCmd : Key.LeftControl;
-        keyboard.config.autoDelayMs = 0;
-        await keyboard.pressKey(mod);
-        await keyboard.pressKey(Key.V);
-        await keyboard.releaseKey(Key.V);
-        await keyboard.releaseKey(mod);
+        if (process.platform === 'darwin') {
+          await require('../macKeyboard').sendMacKey('paste');
+        } else {
+          const { keyboard, Key } = require('@nut-tree-fork/nut-js');
+          keyboard.config.autoDelayMs = 0;
+          await keyboard.pressKey(Key.LeftControl);
+          await keyboard.pressKey(Key.V);
+          await keyboard.releaseKey(Key.V);
+          await keyboard.releaseKey(Key.LeftControl);
+        }
         return { ok: true, method: 'paste' };
       } catch (ke) {
         // 退化：文本已在剪贴板，请用户手动粘贴

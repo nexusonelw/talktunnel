@@ -6,7 +6,7 @@ A cross-device text sharing tool that allows you to send text and files between 
 
 - **Desktop app** shows a QR code with server URL
 - **Mobile interface** is a PWA-enabled webpage accessible by scanning the QR code  
-- **Automatic text pasting** at cursor position when nut.js works properly
+- **Automatic text pasting** at cursor position using macOS System Events or supported keyboard automation on other platforms
 - **Fallback to clipboard** mode if automatic pasting fails
 - **Cross-platform support** Windows, macOS, Linux
 - **File transfer** between devices
@@ -191,4 +191,3 @@ If you encounter disk mounting issues on macOS:
 ```bash
 hdiutil detach /Volumes/TalkTunnel 2>/dev/null || true
 ```
-

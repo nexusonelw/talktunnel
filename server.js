@@ -13,6 +13,7 @@ const { pasteWithPowerShell } = require('./windows-paste-helper');
 const cloudSync = require('./cloudSyncService');
 const { startNetworkMonitor } = require('./networkMonitor');
 const { createCommandProcessor } = require('./commandProcessor');
+const { sendMacKey } = require('./macKeyboard');
 
 // 获取 Electron app 对象（在主进程中可用）
 const electronApp = global.electronApp || null;
@@ -275,26 +276,20 @@ async function pasteTextAtCursor(text) {
                 } catch (psError) {
                     console.error('PowerShell paste failed:', psError);
                     console.log('Text in clipboard only');
+                    return false;
                 }
             }
-        } else {
-            // Mac and Linux handling remains the same
+        } else if (process.platform === 'darwin') {
             const originalClipboard = clipboard.readText();
             clipboard.writeText(text);
-            
-            if (nutJSAvailable && nutjs) {
-                if (process.platform === 'darwin') {
-                    await nutjs.keyboard.pressKey(nutjs.Key.LeftCmd, nutjs.Key.V);
-                    await nutjs.keyboard.releaseKey(nutjs.Key.LeftCmd, nutjs.Key.V);
-                } else {
-                    await nutjs.keyboard.pressKey(nutjs.Key.LeftControl, nutjs.Key.V);
-                    await nutjs.keyboard.releaseKey(nutjs.Key.LeftControl, nutjs.Key.V);
-                }
-                
-                setTimeout(() => {
-                    clipboard.writeText(originalClipboard);
-                }, 200);
-            }
+            await sendMacKey('paste');
+            await new Promise((resolve) => setTimeout(resolve, 250));
+            if (clipboard.readText() === text) clipboard.writeText(originalClipboard);
+        } else {
+            clipboard.writeText(text);
+            if (!nutJSAvailable || !nutjs) return false;
+            await nutjs.keyboard.pressKey(nutjs.Key.LeftControl, nutjs.Key.V);
+            await nutjs.keyboard.releaseKey(nutjs.Key.LeftControl, nutjs.Key.V);
         }
         
         return true;
@@ -307,6 +302,10 @@ async function pasteTextAtCursor(text) {
 }
 
 async function pressEnterAtCursor() {
+  if (process.platform === 'darwin') {
+    await sendMacKey('enter');
+    return true;
+  }
   if (nutJSAvailable && nutjs) {
     await nutjs.keyboard.pressKey(nutjs.Key.Enter);
     await nutjs.keyboard.releaseKey(nutjs.Key.Enter);
