@@ -12,6 +12,7 @@ A cross-device text sharing tool that allows you to send text and files between 
 - **File transfer** between devices
 - **Real-time synchronization** via WebSocket
 - **Multilingual support** (Chinese/English)
+- **Text delivery fallback** tries the local network first, then queues text and Enter actions through Cloudflare for the desktop to collect
 
 ## Technology Stack
 
@@ -53,6 +54,7 @@ npm start
 1. **Start the application** - Run `npm start` to launch the desktop app
 2. **Scan QR code** - Open the QR code displayed on your computer with your mobile device
 3. **Send text** - Type text on your mobile device and it will automatically paste on your computer
+   - If local delivery fails, the page shows a cloud delivery notice. Keep the desktop app running so it can collect queued text. Files still require a local network connection.
 4. **Transfer files** - Select files on mobile to send to your computer, or send files from computer to mobile
 5. **Auto-paste settings** - Adjust delay time for automatic text pasting (0-10 seconds)
 
@@ -189,5 +191,4 @@ If you encounter disk mounting issues on macOS:
 ```bash
 hdiutil detach /Volumes/TalkTunnel 2>/dev/null || true
 ```
-
 

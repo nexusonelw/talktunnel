@@ -12,6 +12,7 @@ const store = new Store();
 const { pasteWithPowerShell } = require('./windows-paste-helper');
 const cloudSync = require('./cloudSyncService');
 const { startNetworkMonitor } = require('./networkMonitor');
+const { createCommandProcessor } = require('./commandProcessor');
 
 // 获取 Electron app 对象（在主进程中可用）
 const electronApp = global.electronApp || null;
@@ -235,7 +236,7 @@ async function pasteTextAtCursor(text) {
             
             // First, always copy to clipboard as backup
             clipboard.writeText(text);
-            console.log('Text copied to clipboard:', text);
+            console.log('Text copied to clipboard');
             
             if (nutJSAvailable && nutjs) {
                 // Ensure window focus first
@@ -303,6 +304,50 @@ async function pasteTextAtCursor(text) {
         console.log('Error occurred, text in clipboard as fallback');
         return false;
     }
+}
+
+async function pressEnterAtCursor() {
+  if (nutJSAvailable && nutjs) {
+    await nutjs.keyboard.pressKey(nutjs.Key.Enter);
+    await nutjs.keyboard.releaseKey(nutjs.Key.Enter);
+    return true;
+  }
+  if (process.platform === 'win32') {
+    const { execFile } = require('child_process');
+    await new Promise((resolve, reject) => {
+      execFile('powershell', ['-NoProfile', '-Command',
+        "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')"],
+      (error) => error ? reject(error) : resolve());
+    });
+    return true;
+  }
+  return false;
+}
+
+const processCommand = createCommandProcessor({
+  store,
+  pasteText: async (text) => {
+    if (process.platform === 'win32') {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await ensureWindowFocus();
+    }
+    return pasteTextAtCursor(text);
+  },
+  pressEnter: pressEnterAtCursor
+});
+
+async function processLocalCommand(req, res, kind) {
+  try {
+    const success = await processCommand({
+      id: req.get('X-TalkTunnel-Command-Id') || null,
+      kind,
+      text: kind === 'enter' ? '' : req.body
+    });
+    res.status(success ? 200 : 500).send(success ? 'OK' : 'Failed');
+  } catch (error) {
+    console.error('Failed to process command:', error);
+    res.status(error.message === 'Invalid command' ? 400 : 500).send('Error');
+  }
 }
 
 // Routes
@@ -441,7 +486,7 @@ app.post('/send-to-phones', upload.single('file'), async (req, res) => {
 });
 
 // 客户端连接注册端点
-app.post('/connect', async (req, res) => {
+app.post('/connect', (req, res) => {
   const clientIP = req.ip || req.connection.remoteAddress;
 
   // 注册新连接的客户端
@@ -451,14 +496,12 @@ app.post('/connect', async (req, res) => {
   });
 
   console.log(`Client connected from ${clientIP}. Total clients: ${connectedClients.size}`);
-  try {
-    serverIPs = getLocalIPs();
-    serverIP = serverIPs[0] || '127.0.0.1';
-    await cloudSync.updateIps({ lanIps: serverIPs, port: serverPort });
-  } catch (error) {
-    console.error('Failed to sync IPs after client connect:', error.message);
-  }
   res.json({ status: 'connected', clientIP: clientIP });
+  serverIPs = getLocalIPs();
+  serverIP = serverIPs[0] || '127.0.0.1';
+  void cloudSync.updateIps({ lanIps: serverIPs, port: serverPort }).catch((error) => {
+    console.error('Failed to sync IPs after client connect:', error.message);
+  });
 });
 
 // 客户端断开连接端点
@@ -488,7 +531,6 @@ app.post('/heartbeat', (req, res) => {
 });
 
 app.post('/', async (req, res) => {
-    const text = req.body;
     const clientIP = req.ip || req.connection.remoteAddress;
     
     // Update last seen time and increment count
@@ -499,29 +541,11 @@ app.post('/', async (req, res) => {
         });
     }
     
-    console.log(`Received text from ${clientIP}: ${text}`);
-    
-    // Add delay before processing on Windows
-    if (process.platform === 'win32') {
-        console.log('Windows: Waiting before paste operation...');
-        await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    
-    // Ensure window focus first (especially important for Windows)
-    if (process.platform === 'win32') {
-        await ensureWindowFocus();
-    }
-    
-    // Paste text at cursor position
-    pasteTextAtCursor(text)
-        .then(success => {
-            res.status(200).send(success ? 'OK' : 'Failed');
-        })
-        .catch(error => {
-            console.error('Error handling paste request:', error);
-            res.status(500).send('Error');
-        });
+    console.log(`Received text command from ${clientIP}`);
+    await processLocalCommand(req, res, 'text');
 });
+
+app.post('/send-and-enter', (req, res) => processLocalCommand(req, res, 'text_enter'));
 
 // 获取保存的延迟时间
 app.get('/get-delay', (req, res) => {
@@ -542,37 +566,7 @@ app.post('/save-delay', (req, res) => {
 });
 
 // 发送回车键端点
-app.post('/enter-key', async (req, res) => {
-    console.log('Received enter key request');
-    
-    try {
-        // Windows specific handling
-        if (process.platform === 'win32') {
-            if (nutJSAvailable && nutjs) {
-                await nutjs.keyboard.pressKey(nutjs.Key.Enter);
-                await new Promise(resolve => setTimeout(resolve, 50));
-                await nutjs.keyboard.releaseKey(nutjs.Key.Enter);
-                console.log('Enter key sent successfully');
-            } else {
-                // 如果 nut.js 不可用，使用 PowerShell
-                const { exec } = require('child_process');
-                exec('powershell -Command "[System.Windows.Forms.SendKeys]::SendWait(\'{ENTER}\')"');
-                console.log('Enter key sent via PowerShell');
-            }
-        } else {
-            // Mac and Linux
-            if (nutJSAvailable && nutjs) {
-                await nutjs.keyboard.pressKey(nutjs.Key.Enter);
-                await nutjs.keyboard.releaseKey(nutjs.Key.Enter);
-            }
-        }
-        
-        res.status(200).send('OK');
-    } catch (error) {
-        console.error('Error sending enter key:', error);
-        res.status(500).send('Error');
-    }
-});
+app.post('/enter-key', (req, res) => processLocalCommand(req, res, 'enter'));
 
 // Start server
 function startServer() {
@@ -673,6 +667,7 @@ module.exports = {
   startServer,
   getServerInfo,
   getLocalIPs,
+  handleRelayCommand: ({ id, kind, text }) => processCommand({ id, kind, text }),
   setCloudRegistrationError: (error) => {
     cloudRegistrationError = error ? String(error.stack || error.message || error) : null;
   }

@@ -1,10 +1,11 @@
 {
   "name": "talktunnel",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Cross-device text tunnel tool",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node --test test/*.test.js && npm --prefix cloudflare-worker test",
     "start-win-admin": "start-windows-admin.bat",
     "generate-icons": "node generate-icons.js",
     "build": "npm run generate-icons && electron-builder",

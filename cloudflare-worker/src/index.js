@@ -18,6 +18,10 @@ export default {
       if (url.pathname === '/api/change-password' && request.method === 'POST') return await changePassword(request, env);
       if (url.pathname === '/api/auth' && request.method === 'POST') return await auth(request, env);
       if (url.pathname === '/api/client' && request.method === 'POST') return await client(request, env);
+      if (url.pathname === '/api/relay/submit' && request.method === 'POST') return await relaySubmit(request, env);
+      if (url.pathname === '/api/relay/status' && request.method === 'POST') return await relayStatus(request, env);
+      if (url.pathname === '/api/relay/poll' && request.method === 'POST') return await relayPoll(request, env);
+      if (url.pathname === '/api/relay/ack' && request.method === 'POST') return await relayAck(request, env);
       if (url.pathname === '/manifest.webmanifest' && request.method === 'GET') return manifestResponse(url);
       if (url.pathname === '/sw' && request.method === 'GET') return serviceWorkerResponse();
       if (url.pathname === '/pwa-icon.svg' && request.method === 'GET') return iconResponse();
@@ -27,6 +31,15 @@ export default {
       return json({ error: 'Not found' }, 404);
     } catch (error) {
       return json({ error: error.message || 'Server error' }, error.status || 500);
+    }
+  },
+  async scheduled(_controller, env) {
+    const now = Date.now();
+    for (let i = 0; i < 10; i++) {
+      const result = await env.DB.prepare(
+        'DELETE FROM relay_messages WHERE id IN (SELECT id FROM relay_messages WHERE expires_at <= ? LIMIT 500)'
+      ).bind(now).run();
+      if ((result.meta?.changes || 0) < 500) break;
     }
   }
 };
@@ -92,6 +105,8 @@ async function changePassword(request, env) {
   await env.DB.prepare('UPDATE clients SET salt = ?, password_hash = ?, registration_secret_hash = ? WHERE uuid = ?')
     .bind(salt, passwordHash, registrationSecretHash, uuid)
     .run();
+  await env.DB.prepare("UPDATE relay_messages SET state = 'failed', payload = '', claimed_until = 0, lease_token = NULL WHERE uuid = ? AND state = 'queued'")
+    .bind(uuid).run();
   return json({ ok: true });
 }
 
@@ -121,6 +136,109 @@ async function getAuthedClient(env, uuid, password) {
     port: row.port,
     updatedAt: row.updated_at
   };
+}
+
+async function getAuthedDesktop(env, uuid, registrationSecret) {
+  const row = await env.DB.prepare('SELECT salt, registration_secret_hash FROM clients WHERE uuid = ?')
+    .bind(uuid).first();
+  if (!row || !(await matchesSecret(registrationSecret, row.salt, row.registration_secret_hash))) {
+    throw new HttpError('Unauthorized', 401);
+  }
+}
+
+const RELAY_TTL_MS = 24 * 60 * 60 * 1000;
+const RELAY_LEASE_MS = 60 * 1000;
+const RELAY_MAX_TEXT_BYTES = 64 * 1024;
+const RELAY_ID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+async function relaySubmit(request, env) {
+  if (Number(request.headers.get('content-length') || 0) > 70 * 1024) {
+    return json({ error: 'Text is too large for cloud relay' }, 413);
+  }
+  const body = await request.json();
+  const uuid = String(body.uuid || '');
+  const password = String(body.password || '');
+  const id = String(body.id || '');
+  const kind = String(body.kind || '');
+  const payload = body.text;
+  if (!RELAY_ID_PATTERN.test(id) || !['text', 'text_enter', 'enter'].includes(kind) ||
+      (kind === 'enter' ? payload !== '' : typeof payload !== 'string' || !payload.trim()) ||
+      new TextEncoder().encode(String(payload)).length > RELAY_MAX_TEXT_BYTES) {
+    return json({ error: 'Invalid relay message' }, 400);
+  }
+  await getAuthedClient(env, uuid, password);
+
+  const existing = await env.DB.prepare('SELECT uuid, kind, payload, state FROM relay_messages WHERE id = ?')
+    .bind(id).first();
+  if (existing) {
+    if (existing.uuid !== uuid || existing.kind !== kind || (existing.state === 'queued' && existing.payload !== payload)) {
+      return json({ error: 'Relay ID already used' }, 409);
+    }
+    return json({ id, state: existing.state });
+  }
+
+  const now = Date.now();
+  const count = await env.DB.prepare("SELECT COUNT(*) AS count FROM relay_messages WHERE uuid = ? AND state = 'queued' AND expires_at > ?")
+    .bind(uuid, now).first();
+  if (Number(count?.count || 0) >= 200) return json({ error: 'Relay queue is full' }, 429);
+
+  await env.DB.prepare(
+    'INSERT OR IGNORE INTO relay_messages (id, uuid, kind, payload, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).bind(id, uuid, kind, payload, now, now + RELAY_TTL_MS).run();
+  return json({ id, state: 'queued' }, 202);
+}
+
+async function relayStatus(request, env) {
+  const body = await request.json();
+  const uuid = String(body.uuid || '');
+  const id = String(body.id || '');
+  if (!RELAY_ID_PATTERN.test(id)) return json({ error: 'Invalid relay ID' }, 400);
+  await getAuthedClient(env, uuid, String(body.password || ''));
+  const row = await env.DB.prepare('SELECT state, expires_at FROM relay_messages WHERE uuid = ? AND id = ?')
+    .bind(uuid, id).first();
+  if (!row) return json({ error: 'Relay message not found' }, 404);
+  return json({ id, state: row.expires_at <= Date.now() && row.state === 'queued' ? 'failed' : row.state });
+}
+
+async function relayPoll(request, env) {
+  const body = await request.json();
+  const uuid = String(body.uuid || '');
+  await getAuthedDesktop(env, uuid, String(body.registrationSecret || ''));
+  const now = Date.now();
+  await env.DB.prepare("UPDATE relay_messages SET state = 'failed', payload = '' WHERE uuid = ? AND state = 'queued' AND attempts >= 5 AND claimed_until <= ?")
+    .bind(uuid, now).run();
+  const candidates = await env.DB.prepare(
+    "SELECT id, kind, payload FROM relay_messages WHERE uuid = ? AND state = 'queued' AND claimed_until <= ? AND expires_at > ? ORDER BY created_at, id LIMIT 10"
+  ).bind(uuid, now, now).all();
+  const messages = [];
+  for (const row of candidates.results || []) {
+    const leaseToken = crypto.randomUUID();
+    const claim = await env.DB.prepare(
+      "UPDATE relay_messages SET claimed_until = ?, lease_token = ?, attempts = attempts + 1 WHERE uuid = ? AND id = ? AND state = 'queued' AND claimed_until <= ?"
+    ).bind(now + RELAY_LEASE_MS, leaseToken, uuid, row.id, now).run();
+    if (claim.meta?.changes === 1) {
+      messages.push({ id: row.id, kind: row.kind, text: row.payload, leaseToken });
+    }
+  }
+  return json({ messages });
+}
+
+async function relayAck(request, env) {
+  const body = await request.json();
+  const uuid = String(body.uuid || '');
+  const id = String(body.id || '');
+  const leaseToken = String(body.leaseToken || '');
+  if (!RELAY_ID_PATTERN.test(id) || !RELAY_ID_PATTERN.test(leaseToken) || typeof body.success !== 'boolean') {
+    return json({ error: 'Invalid acknowledgment' }, 400);
+  }
+  await getAuthedDesktop(env, uuid, String(body.registrationSecret || ''));
+  const now = Date.now();
+  const result = body.success
+    ? await env.DB.prepare("UPDATE relay_messages SET state = 'done', payload = '', processed_at = ?, claimed_until = 0, lease_token = NULL WHERE uuid = ? AND id = ? AND state = 'queued' AND lease_token = ?")
+      .bind(now, uuid, id, leaseToken).run()
+    : await env.DB.prepare("UPDATE relay_messages SET state = CASE WHEN attempts >= 5 THEN 'failed' ELSE 'queued' END, payload = CASE WHEN attempts >= 5 THEN '' ELSE payload END, claimed_until = 0, lease_token = NULL WHERE uuid = ? AND id = ? AND state = 'queued' AND lease_token = ?")
+      .bind(uuid, id, leaseToken).run();
+  return json({ ok: result.meta?.changes === 1 });
 }
 
 function cleanIps(ips) {
@@ -162,7 +280,7 @@ function randomBase64(bytes) {
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' }
+    headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
   });
 }
 
@@ -244,6 +362,7 @@ function mobilePage(uuid) {
   <title>TalkTunnel Mobile</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f5f5;min-height:100vh;display:flex;flex-direction:column}.app-bar{background:#2196F3;color:white;padding:16px 20px;box-shadow:0 2px 4px rgba(0,0,0,.1);position:sticky;top:0;z-index:10}.app-bar h1{font-size:20px;font-weight:500}.container{flex:1;padding:20px;display:flex;flex-direction:column;gap:16px;overflow-y:auto}.input-field{width:100%;padding:16px;font-size:16px;border:1px solid #ddd;border-radius:8px;background:white}.input-field:focus{outline:none;border-color:#2196F3}.textarea-field{min-height:200px;resize:vertical;font-family:inherit}.button{background:#2196F3;color:white;border:0;padding:14px 24px;font-size:16px;border-radius:8px;cursor:pointer;width:100%;text-transform:uppercase;font-weight:500}.button:disabled{background:#ccc;cursor:not-allowed}.settings-section,.file-section{background:white;border-radius:8px;padding:16px;box-shadow:0 2px 4px rgba(0,0,0,.1)}.settings-row,.manual-checkbox-row{display:flex;align-items:center;gap:12px}.settings-label,.hint,.file-info{color:#666;font-size:14px}.delay-input{width:80px;padding:8px;border:1px solid #ddd;border-radius:4px;text-align:center}.status-message{padding:12px 16px;border-radius:8px;text-align:center}.success{background:#4CAF50;color:white}.error{background:#f44336;color:white}.connected{background:#e8f5e9;color:#2e7d32;border:1px solid #4caf50}.file-label{background:#2196F3;color:white;padding:12px 20px;border-radius:8px;display:block;text-align:center}.file-input-wrapper input{position:absolute;left:-9999px}.selected-files-list{margin-top:10px}.file-item{display:flex;justify-content:space-between;gap:8px;padding:8px;margin:5px 0;background:#f5f5f5;border-radius:4px;font-size:14px}.download-area{background:#e3f2fd;border:2px dashed #2196F3;border-radius:8px;padding:20px;text-align:center;min-height:100px}.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px}.modal-content{background:white;margin:clamp(16px,8vh,64px) auto;padding:24px;width:100%;max-width:400px;max-height:calc(100vh - 32px);border-radius:12px;display:flex;flex-direction:column;gap:12px}.modal-header{font-size:20px;margin-bottom:4px}.modal-body{color:#666;margin-bottom:24px;line-height:1.5}#historyList{overflow-y:auto;-webkit-overflow-scrolling:touch;max-height:55vh;padding-right:2px}.history-item{width:100%;text-align:left;background:#f7f7f7;border:0;border-radius:6px;padding:10px;margin:6px 0;white-space:pre-wrap;word-break:break-word}.install-banner{display:none;position:fixed;left:12px;right:12px;bottom:12px;z-index:900;background:#fff;border:1px solid #d7e8fb;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:12px;gap:10px;align-items:center}.install-banner.show{display:flex}.install-banner p{flex:1;color:#333;font-size:14px;line-height:1.4}.install-actions{display:flex;gap:8px}.install-actions button{border:0;border-radius:6px;padding:9px 12px;font-size:13px}.install-primary{background:#2196F3;color:#fff}.install-close{background:#eee;color:#333}.auth-card{width:calc(100% - 40px);max-width:400px;margin:48px auto;background:#fff;border-radius:12px;padding:24px;box-shadow:0 4px 16px rgba(0,0,0,.12)}.auth-card h2{font-size:20px;margin-bottom:12px}.auth-card p{color:#666;font-size:14px;line-height:1.5;margin-bottom:16px}.auth-card input{width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:8px;margin-bottom:12px}.auth-card .auth-error{color:#d32f2f;margin:12px 0 0}
+    .pending{background:#fff3cd;color:#795548;border:1px solid #ffdf80}
   </style>
 </head>
 <body>
@@ -298,8 +417,8 @@ function mobilePage(uuid) {
     const INSTALL_DISMISSED_KEY = 'talktunnel-install-dismissed';
     let deferredInstallPrompt = null;
     let pwaSetup = false;
-    let deviceRefreshUsed = false;
-    let deviceRefreshExhausted = false;
+    let pendingCommand = null;
+    let latestRelayId = null;
 
     localStorage.removeItem('talktunnel-password:' + uuid);
     localStorage.removeItem('talktunnel-device:' + uuid);
@@ -383,8 +502,7 @@ function mobilePage(uuid) {
         const verifiedDevice = await cloud('/api/auth', { uuid, password: candidate });
         password = candidate;
         device = verifiedDevice;
-        deviceRefreshUsed = false;
-        deviceRefreshExhausted = false;
+        pendingCommand = null;
         serverUrl = '';
         authPassword.value = '';
         authForm.style.display = 'none';
@@ -416,16 +534,19 @@ function mobilePage(uuid) {
 
     async function tryDesktop(path = '/', options = {}) {
       for (const base of orderedUrls()) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
         try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 3000);
           const res = await fetch(base + path, { ...options, signal: controller.signal });
-          clearTimeout(timeout);
           if (res.ok) {
             serverUrl = base;
             return res;
           }
-        } catch (_) {}
+        } catch (_) {
+          // Try the next local address.
+        } finally {
+          clearTimeout(timeout);
+        }
       }
       throw new Error('desktop unreachable');
     }
@@ -475,64 +596,122 @@ function mobilePage(uuid) {
         connectWebSocket();
       } catch (error) {
         isConnected = false;
-        showStatus('未完成桌面连接登记，可直接尝试发送。', 'error');
+        showStatus('局域网连接失败，文本和回车将改用云端发送；文件仍需局域网。', 'error');
       }
     }
 
     async function sendViaDesktop(path, options, behavior = {}) {
       if (!device || !password) throw new Error('authentication required');
       try {
-        await refreshDevice();
-      } catch (error) {
-        if (error.status === 401) lockAccess('密码已变更，请重新输入');
-        else showStatus('无法验证访问密码，请检查网络后重试。', 'error');
-        throw error;
-      }
-      const refreshOnFailure = Boolean(behavior.refreshOnFailure);
-      if (deviceRefreshExhausted) {
-        showError('连接错误', '当前设备连接不可用，请刷新页面后重试。');
-        throw new Error('device refresh exhausted');
-      }
-
-      try {
         return await tryDesktop(path, options);
       } catch (error) {
-        if (!refreshOnFailure) {
-          throw error;
-        }
-
-        if (deviceRefreshUsed) {
-          deviceRefreshExhausted = true;
-          showError('网络错误', '当前网络不可用，请刷新页面或重新扫码。');
-          throw error;
-        }
-
-        deviceRefreshUsed = true;
-        await refreshDevice();
-        showStatus('访问错误，IP地址已刷新，正在重试。', 'error');
-
+        if (!behavior.refreshOnFailure) throw error;
         try {
+          await refreshDevice();
           return await tryDesktop(path, options);
         } catch (retryError) {
-          deviceRefreshExhausted = true;
-          showError('网络错误', '刷新后的IP地址仍然无法连接，请刷新页面或重新扫码。');
+          if (retryError.status === 401) lockAccess('密码已变更，请重新输入');
           throw retryError;
         }
       }
     }
 
-    async function sendText() {
+    async function watchRelayStatus(id) {
+      for (let attempt = 0; attempt < 20 && password; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        try {
+          const result = await cloud('/api/relay/status', { uuid, password, id });
+          if (result.state === 'done') {
+            if (latestRelayId === id) showStatus('云端发送成功，桌面端已处理。', 'success');
+            return;
+          }
+          if (result.state === 'failed') {
+            showError('云端发送失败', '桌面端未能处理这条消息，请重新发送。');
+            return;
+          }
+        } catch (error) {
+          if (error.status === 401) {
+            lockAccess('密码已变更，请重新输入');
+            return;
+          }
+        }
+      }
+      if (latestRelayId === id && password) {
+        showStatus('云端已接收，桌面端尚未确认；客户端恢复联网后会继续处理。', 'pending');
+      }
+    }
+
+    async function sendTextCommand(kind, text) {
+      if (!device || !password) throw new Error('authentication required');
+      if (!pendingCommand || pendingCommand.kind !== kind || pendingCommand.text !== text) {
+        pendingCommand = { id: crypto.randomUUID(), kind, text };
+      }
+      const { id } = pendingCommand;
+      const path = kind === 'text_enter' ? '/send-and-enter' : '/';
+      const options = { method:'POST', headers:{'Content-Type':'text/plain', 'X-TalkTunnel-Command-Id':id}, body:text };
+
+      try {
+        await tryDesktop(path, options);
+        pendingCommand = null;
+        isConnected = true;
+        showStatus('局域网发送成功！', 'success');
+        return 'lan';
+      } catch (_) {
+        showStatus('当前数据局域网发送失败，正在使用云端发送…', 'pending');
+      }
+
+      try {
+        await refreshDevice();
+        try {
+          await tryDesktop(path, options);
+          pendingCommand = null;
+          isConnected = true;
+          showStatus('局域网发送成功！', 'success');
+          return 'lan';
+        } catch (_) {
+          // The refreshed LAN addresses are also unreachable.
+        }
+      } catch (error) {
+        if (error.status === 401) {
+          lockAccess('密码已变更，请重新输入');
+          throw error;
+        }
+      }
+
+      try {
+        const result = await cloud('/api/relay/submit', { uuid, password, id, kind, text });
+        if (result.state === 'failed') throw new Error('Relay message failed');
+        pendingCommand = null;
+        latestRelayId = id;
+        if (result.state === 'done') {
+          showStatus('局域网发送失败；桌面端已通过云端处理。', 'success');
+        } else {
+          showStatus('局域网发送失败，已使用云端发送，等待桌面端处理。', 'pending');
+          void watchRelayStatus(id);
+        }
+        return 'cloud';
+      } catch (error) {
+        if (error.status === 401) lockAccess('密码已变更，请重新输入');
+        else if (error.status === 413) showError('文本过长', '云端单条文本上限为 64 KiB，请缩短后重试。');
+        else if (error.status === 429) showError('云端队列已满', '请等待桌面端处理已有消息后再试。');
+        else showError('发送失败', '局域网和云端均未能接收，请重试。');
+        throw error;
+      }
+    }
+
+    async function sendText(withEnter = false) {
       if (isSending) return;
       const textInput = document.getElementById('textInput');
       const fullText = textInput.value;
-      const text = manualMode ? fullText.trim() : fullText.slice(lastSentLength).trim();
+      const text = manualMode || withEnter ? fullText.trim() : fullText.slice(lastSentLength).trim();
       if (!text) return;
       isSending = true;
       sendButton.disabled = true;
+      sendAndEnterButton.disabled = true;
       try {
-        await sendViaDesktop('/', { method:'POST', headers:{'Content-Type':'text/plain'}, body:text + ' ' }, { refreshOnFailure:true });
-        await addHistory(text);
-        if (manualMode) {
+        await sendTextCommand(withEnter ? 'text_enter' : 'text', text + ' ');
+        await addHistory(text).catch(() => {});
+        if (manualMode || withEnter) {
           textInput.value = '';
           lastSentLength = 0;
           clearTextDraft();
@@ -540,28 +719,26 @@ function mobilePage(uuid) {
           lastSentLength = fullText.length;
           saveTextDraft();
         }
-        showStatus('文本发送成功！', 'success');
       } catch (_) {
         // keep input intact on failure
       } finally {
         isSending = false;
         sendButton.disabled = false;
+        sendAndEnterButton.disabled = false;
       }
     }
 
     async function sendTextAndEnter() {
-      const text = document.getElementById('textInput').value.trim();
-      if (!text) return;
-      await sendText();
-      if (!document.getElementById('textInput').value.trim()) {
-        try { await sendViaDesktop('/enter-key', { method:'POST' }, { refreshOnFailure:true }); } catch (_) {}
-      }
+      await sendText(true);
     }
 
     function startHeartbeat() {
       clearInterval(heartbeatInterval);
       heartbeatInterval = setInterval(() => {
-        sendViaDesktop('/heartbeat', { method:'POST', headers:{'Content-Type':'application/json'} }).catch(() => {});
+        sendViaDesktop('/heartbeat', { method:'POST', headers:{'Content-Type':'application/json'} }).catch(() => {
+          isConnected = false;
+          showStatus('局域网连接已断开，文本和回车将改用云端发送。', 'error');
+        });
       }, 20000);
     }
 
@@ -649,13 +826,19 @@ function mobilePage(uuid) {
     };
 
     sendFilesButton.onclick = async () => {
+      const remaining = [];
       for (const file of selectedFiles) {
         const form = new FormData();
         form.append('file', file);
-        await sendViaDesktop('/upload-to-pc', { method:'POST', body:form }, { refreshOnFailure:true }).catch(() => {});
+        try {
+          await sendViaDesktop('/upload-to-pc', { method:'POST', body:form }, { refreshOnFailure:true });
+        } catch (_) {
+          remaining.push(file);
+        }
       }
-      selectedFiles = [];
+      selectedFiles = remaining;
       fileInput.onchange({ target:{ files:[] } });
+      if (remaining.length) showError('文件发送失败', '文件仍需局域网连接，未发送的文件已保留在列表中。');
     };
 
     manualCheckbox.onchange = () => { manualMode = manualCheckbox.checked; };
@@ -666,7 +849,7 @@ function mobilePage(uuid) {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(sendText, Number(delayInput.value || 2) * 1000);
     };
-    sendButton.onclick = sendText;
+    sendButton.onclick = () => sendText(false);
     sendAndEnterButton.onclick = sendTextAndEnter;
     historyButton.onclick = showHistory;
     historyModal.onclick = (event) => { if (event.target === historyModal) closeHistory(); };

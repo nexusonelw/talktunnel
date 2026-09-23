@@ -1,6 +1,6 @@
 # TalkTunnel Discovery Worker
 
-This Worker stores TalkTunnel desktop clients in D1 and serves the mobile page at `/{uuid}`.
+This Worker stores TalkTunnel desktop clients in D1, serves the mobile page at `/{uuid}`, and queues text/Enter actions when LAN delivery fails. The desktop polls the queue, acknowledges processed actions, and the Worker clears their text. Files remain LAN-only.
 
 ## Setup
 

@@ -6,7 +6,7 @@ const fs = require('fs');
 global.electronApp = app;
 
 // 然后再加载 server
-const { startServer, getServerInfo, getLocalIPs, setCloudRegistrationError } = require('./server');
+const { startServer, getServerInfo, getLocalIPs, handleRelayCommand, setCloudRegistrationError } = require('./server');
 const cloudSync = require('./cloudSyncService');
 const { initPinyinInput } = require('./pinyin/pinyinInput');
 
@@ -51,6 +51,7 @@ function t(key) {
 let mainWindow;
 let tray = null;  // 托盘实例
 let isQuiting = false;  // 退出标志
+let stopRelayPolling = null;
 
 async function promptForCloudPassword() {
   if (!mainWindow) return null;
@@ -154,6 +155,7 @@ function createWindow() {
 
   mainWindow.webContents.once('did-finish-load', () => {
     startServer().then(async () => {
+    if (!stopRelayPolling) stopRelayPolling = cloudSync.startRelayPolling(handleRelayCommand);
     try {
       const info = getServerInfo();
       console.log('[cloud-register] start', {
@@ -334,6 +336,7 @@ app.on('window-all-closed', (event) => {
 // 确保退出时清理托盘
 app.on('before-quit', () => {
   isQuiting = true;
+  if (stopRelayPolling) stopRelayPolling();
   if (tray) {
     tray.destroy();
   }

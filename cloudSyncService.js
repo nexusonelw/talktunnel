@@ -3,6 +3,7 @@ const path = require('path');
 const Store = require('electron-store');
 
 const store = new Store();
+let lastLoggedConfigPath = '';
 
 function readConfig() {
   const candidates = [
@@ -13,7 +14,10 @@ function readConfig() {
   try {
     const configPath = candidates.find((file) => fs.existsSync(file));
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    console.log('[cloud-sync] config loaded:', configPath);
+    if (configPath !== lastLoggedConfigPath) {
+      console.log('[cloud-sync] config loaded:', configPath);
+      lastLoggedConfigPath = configPath;
+    }
     return {
       workerBaseUrl: String(config.workerBaseUrl || '').replace(/\/+$/, '')
     };
@@ -35,29 +39,31 @@ async function postJson(pathname, body) {
     return null;
   }
 
-  console.log('[cloud-sync] POST', `${workerBaseUrl}${pathname}`, {
-    ...body,
-    password: body.password ? '[hidden]' : undefined,
-    registrationSecret: body.registrationSecret ? '[hidden]' : undefined
-  });
+  const quiet = pathname === '/api/relay/poll';
+  if (!quiet) console.log('[cloud-sync] POST', `${workerBaseUrl}${pathname}`);
 
-  const response = await fetch(`${workerBaseUrl}${pathname}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  let response;
+  try {
+    response = await fetch(`${workerBaseUrl}${pathname}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!response.ok) {
     const text = await response.text();
-    console.error('[cloud-sync] response error', response.status, text);
+    if (!quiet) console.error('[cloud-sync] response error', response.status, text);
     throw new Error(`Cloud sync failed: ${response.status} ${text}`);
   }
 
   const result = await response.json();
-  console.log('[cloud-sync] response ok', pathname, {
-    ...result,
-    registrationSecret: result.registrationSecret ? '[hidden]' : undefined
-  });
+  if (!quiet) console.log('[cloud-sync] response ok', pathname);
   return result;
 }
 
@@ -124,6 +130,54 @@ async function updateIps({ lanIps, port }) {
   });
 }
 
+async function pollRelay() {
+  const uuid = store.get('cloudClient.uuid');
+  const registrationSecret = store.get('cloudClient.registrationSecret');
+  if (!uuid || !registrationSecret || !enabled()) return [];
+  const result = await postJson('/api/relay/poll', { uuid, registrationSecret });
+  return result.messages || [];
+}
+
+async function ackRelay({ id, leaseToken, success }) {
+  const uuid = store.get('cloudClient.uuid');
+  const registrationSecret = store.get('cloudClient.registrationSecret');
+  const result = await postJson('/api/relay/ack', { uuid, registrationSecret, id, leaseToken, success });
+  if (!result.ok) throw new Error('Relay acknowledgment was not accepted');
+}
+
+function startRelayPolling(processMessage, intervalMs = 5000) {
+  let stopped = false;
+  let timer;
+  let lastWarningAt = 0;
+
+  const tick = async () => {
+    if (stopped) return;
+    try {
+      const messages = await pollRelay();
+      for (const message of messages) {
+        if (stopped) break;
+        let success = false;
+        try {
+          success = (await processMessage(message)) !== false;
+        } catch (error) {
+          console.error('[cloud-relay] processing failed:', error);
+        }
+        await ackRelay({ id: message.id, leaseToken: message.leaseToken, success });
+      }
+    } catch (error) {
+      if (Date.now() - lastWarningAt > 60000) {
+        console.warn('[cloud-relay] polling failed:', error.message);
+        lastWarningAt = Date.now();
+      }
+    } finally {
+      if (!stopped) timer = setTimeout(tick, intervalMs);
+    }
+  };
+
+  tick();
+  return () => { stopped = true; clearTimeout(timer); };
+}
+
 function getClientInfo(port) {
   const { workerBaseUrl } = readConfig();
   const uuid = store.get('cloudClient.uuid');
@@ -143,5 +197,6 @@ module.exports = {
   getClientInfo,
   readConfig,
   getAccessPassword,
-  setAccessPassword
+  setAccessPassword,
+  startRelayPolling
 };

@@ -18,7 +18,7 @@ TalkTunnel 是一个 Electron 桌面端 + Cloudflare Worker 移动端的跨设�
 - 由 Cloudflare Worker 托管，不再由本地 Express 托管。
 - Worker 目录：`cloudflare-worker/`
 - Worker 主文件：`cloudflare-worker/src/index.js`
-- D1 migration：`cloudflare-worker/migrations/0001_clients.sql`
+- D1 migrations：`cloudflare-worker/migrations/0001_clients.sql`、`cloudflare-worker/migrations/0002_relay_messages.sql`
 - 移动端页面由 Worker 直接返回 HTML 字符串。
 
 发现层：
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS clients (
 7. Worker 使用 PBKDF2-SHA256 保存：
    - `password_hash`
    - `registration_secret_hash`
-8. 桌面端只保存 UUID 和 registrationSecret，不保存用户明文密码。
+8. 桌面端在本地 `electron-store` 保存 UUID、registrationSecret 和可在设置界面查看的访问密码；D1 只保存密码哈希。
 
 桌面端后续启动：
 1. 使用本地 UUID + registrationSecret。
@@ -115,9 +115,9 @@ CREATE TABLE IF NOT EXISTS clients (
 
 扫码连接：
 1. 移动端打开 `/{uuid}`。
-2. 移动端从 `localStorage` 读取 password；没有则弹窗输入。
+2. 移动端每次访问都在页面中输入访问密码，不从浏览器缓存读取密码。
 3. POST `/api/auth` 校验 password 并拉取 `lanIps + port`。
-4. password 和 device 信息缓存在浏览器本地。
+4. 密码和设备地址只保留在当前页面内存中。
 
 ## IP 策略
 
@@ -133,15 +133,14 @@ CREATE TABLE IF NOT EXISTS clients (
 ```
 
 移动端发送策略：
-1. 页面初始化时只从 Cloudflare 认证并获取一次设备信息。
-2. 后续发送文本/文件直接走局域网：
-   `http://<lanIp>:<port>/`
-3. 不允许每次发送前请求 Cloudflare。
-4. 移动端会记住上一次成功的局域网地址 `serverUrl`，后续优先使用它。
-5. 局域网发送失败时，才 POST `/api/client` 获取一次最新 IP+端口。
-6. 刷新后仍失败，提示用户刷新页面或重新扫码，不再继续请求 Cloudflare。
+1. 页面认证后获取设备局域网地址；文本和回车先向桌面 Express 直接发送。
+2. 局域网发送失败时，POST `/api/client` 更新一次 IP+端口并重试。
+3. 仍失败时，POST `/api/relay/submit` 把文本操作加入 D1 队列，并在页面提示切换云端。
+4. 桌面端每 5 秒用注册凭证调用 `/api/relay/poll`，执行后调用 `/api/relay/ack`；网页用 `/api/relay/status` 查看结果。
+5. 局域网和云端请求使用相同操作 ID，桌面端通过持久化执行记录避免常见的超时重复执行。
+6. 文件传输仍只走局域网；云端队列不接收文件。
 
-重要：Cloudflare 只负责发现和认证，不转发用户文本/文件内容。
+云端兜底会使文本暂存于 Cloudflare D1，处理成功后正文清空；消息在 24 小时后过期，并由每小时运行的定时任务清理。
 
 ## 关键接口
 
@@ -150,6 +149,10 @@ Worker：
 - `POST /api/update-ips`
 - `POST /api/auth`
 - `POST /api/client`
+- `POST /api/relay/submit`
+- `POST /api/relay/status`
+- `POST /api/relay/poll`
+- `POST /api/relay/ack`
 - `GET /manifest.webmanifest?uuid=<UUID>`
 - `GET /sw`
 - `GET /pwa-icon.svg`
@@ -162,6 +165,7 @@ Worker：
 - `GET /get-delay`
 - `POST /save-delay`
 - `POST /enter-key`
+- `POST /send-and-enter`
 - `POST /upload-to-pc`
 - `POST /send-to-phones`
 
@@ -278,9 +282,7 @@ https://github.com/nexusonelw/talktunnel/releases/download/1.0.1/TalkTunnel-1.0.
 
 - 不要把 Cloudflare 逻辑继续堆进 `server.js`；使用 `cloudSyncService.js`。
 - 不要恢复本机 IP 二维码回退。
-- 不要让移动端每次发送都请求 Cloudflare。
-- 不要让用户文本/文件经过 Cloudflare。
-- 只有发送失败才刷新一次云端 IP。
-- 刷新后仍失败，提示用户刷新页面或重新扫码。
+- 文本和回车优先使用局域网；局域网失败后才刷新一次云端 IP，仍失败时使用云端文本队列。
+- 文件仍不得进入 Cloudflare 文本队列。
 - 保持 Worker 子项目独立在 `cloudflare-worker/`。
 - 构建/发布安装包可以上传 GitHub Release 资产，但不要推源码，除非用户明确要求。
